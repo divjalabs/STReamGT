@@ -8,6 +8,7 @@ params.ngsfilter = "/Users/elena/PycharmProjects/ngs_pipelines/DIVJA240/ngsfilte
 /*
 Import modules
 */
+include { MAKE_NGSFILTER } from './modules/make_ngsfilter'
 include { PAIR_READS } from './modules/pair_reads'
 include { FILTER_ASSEMBLED } from './modules/filter_assembled'
 include { DEMULTIPLEX_READS } from './modules/demultiplex_reads'
@@ -34,7 +35,7 @@ samples_ch = Channel
 Workflow execution
 */
 workflow {
-
+    ngsfilter = MAKE_NGSFILTER(samples_ch)
     paired_ch = PAIR_READS(samples_ch)
     filtered_ch = FILTER_ASSEMBLED(paired_ch)
     demultiplex_ch = DEMULTIPLEX_READS(filtered_ch, file(params.ngsfilter))
