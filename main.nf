@@ -9,8 +9,7 @@ params.ngsfilter = "/Users/elena/PycharmProjects/ngs_pipelines/DIVJA240/ngsfilte
 Import modules
 */
 include { MAKE_NGSFILTER } from './modules/make_ngsfilter'
-include { PAIR_READS } from './modules/pair_reads'
-include { FILTER_ASSEMBLED } from './modules/filter_assembled'
+include { PAIR_FILTER } from './modules/pair_filter'
 include { DEMULTIPLEX_READS } from './modules/demultiplex_reads'
 /*
 Load sample sheet
@@ -35,8 +34,18 @@ samples_ch = Channel
 Workflow execution
 */
 workflow {
-    ngsfilter = MAKE_NGSFILTER(samples_ch)
-    paired_ch = PAIR_READS(samples_ch)
-    filtered_ch = FILTER_ASSEMBLED(paired_ch)
-    demultiplex_ch = DEMULTIPLEX_READS(filtered_ch, file(params.ngsfilter))
+    ngsfilter_ch = MAKE_NGSFILTER(samples_ch)
+    paired_ch = PAIR_FILTER(samples_ch)
+    demultiplex_input_ch = paired_ch.map { paired ->
+        def kit_id = paired[0]
+        def primers_path = paired[1]
+        def assembled_reads = paired[2]
+        
+        // get the first (and only) element from ngsfilter_ch
+        ngsfilter_ch.first().map { ngsfilter_file ->
+            tuple(kit_id, primers_path, assembled_reads, ngsfilter_file)
+        }
+}.flatten()
+
+    DEMULTIPLEX_READS(demultiplex_input_ch)
 }

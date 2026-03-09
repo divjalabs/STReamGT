@@ -2,18 +2,19 @@ process DEMULTIPLEX_READS {
 
     container 'obitools4'
 
-    publishDir { "intermediate/${sample}" }, mode: 'symlink'
+    publishDir { "intermediate" }, mode: 'symlink'
 
     input:
-    tuple val(sample), path(assembled_reads)
-    path ngsfilter
+    tuple val(kit_id), path(primers_path), path(assembled_reads), path(ngsfilter_file)
 
     output:
-    tuple val(sample), path("assigned_reads.fastq")
+    tuple path("${kit_id}/assigned_reads.fastq"), path(primers_path)
 
     script:
     """
     obimultiplex \
-        -s ${ngsfilter} ${assembled_reads}  > assigned_reads.fastq
+        -s ${ngsfilter_file} \
+        ${assembled_reads} \
+        > ${kit_id}/assigned_reads.fastq
     """
 }
