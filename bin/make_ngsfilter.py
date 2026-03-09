@@ -1,10 +1,13 @@
-#!/Users/elena/miniconda3/envs/ngs_pipelines/bin/python
+#!/usr/bin/env python3
+
+# use for testing only! /Users/elena/miniconda3/envs/ngs_pipelines/bin/python
 
 # input columns: kit_id	sample_path	tags	tags_path	primers_path
 #output columns: experiment	sample	sample_tag	forward_primer	reverse_primer, where sample name is HRM16C__1__PP1
 
 import argparse
 import pandas as pd
+import os
 import re
 
 # function to parse tag combo sets
@@ -74,7 +77,11 @@ def main():
     ngsfilter = primers.merge(samples_tags, on="key").drop(columns="key")
     ngsfilter = ngsfilter[["locus", "Name", "tags", "primerF", "primerR"]]
     ngsfilter.columns = ["experiment",	"sample",	"sample_tag",	"forward_primer",	"reverse_primer"]
-    ngsfilter.to_csv(args.kit_id + "_ngsfilter.csv", index = False)
+    
+    
+    folder = args.kit_id
+    os.makedirs(folder, exist_ok=True)
+    ngsfilter.to_csv(os.path.join(folder, f"{args.kit_id}_ngsfilter.csv"), index=False)
     
 if __name__ == "__main__":
     main()
