@@ -79,10 +79,8 @@ def main():
     ngsfilter = ngsfilter[["locus", "Name", "tags", "primerF", "primerR"]]
     ngsfilter.columns = ["experiment",	"sample",	"sample_tag",	"forward_primer",	"reverse_primer"]
     
-    
-    #folder = args.kit_id
-    #os.makedirs(folder, exist_ok=True)
-    ngsfilter.to_csv(f"{args.kit_id}_ngsfilter.csv", index=False)
+
+    ngsfilter.to_csv(f"{args.kit_id}_ngsfilter_{args.tags}.csv", index=False)
     
 if __name__ == "__main__":
     main()

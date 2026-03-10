@@ -5,8 +5,7 @@ process PROCESS_LOCI{
     publishDir { "intermediate" }, mode: 'copy'
 
     input:
-    val locus                  // single locus value
-    path assigned_reads_file    // assigned_reads.fastq
+    tuple val(locus), val(type), val(sequence), path(assigned_reads_file)
     
     output:
     path "${locus}.csv"        // only keep the final CSV
