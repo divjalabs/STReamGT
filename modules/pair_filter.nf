@@ -1,6 +1,6 @@
 process PAIR_FILTER {
 
-    container 'obitools4'
+    container 'obitools4_py'
 
     publishDir { "intermediate/${kit_id}" }, mode: 'symlink'
 
@@ -8,19 +8,21 @@ process PAIR_FILTER {
     tuple val(kit_id), path(sample_path), val(tags), path(tags_path), path(primers_path), path(r1), path(r2)
 
     output:
-    tuple val(kit_id), path(primers_path), path("${kit_id}/assembled_reads.fastq")
+    tuple val(kit_id), path("assembled_reads.fastq"), path("${kit_id}_ngsfilter.csv")
 
     script:
     """
     mkdir -p ${kit_id}
 
+    make_ngsfilter.py --kit_id ${kit_id} --sample_path ${sample_path} --tags ${tags} --tags_path ${tags_path} --primers_path ${primers_path}
+
     obipairing -F ${r1} -R ${r2} \
         --min-identity ${params.min_identity} \
         --min-overlap ${params.min_overlap} \
-        > ${kit_id}/aligned_reads.fastq
+        > aligned_reads.fastq
 
     obigrep -p 'annotations.mode != "join"' \
-        ${kit_id}/aligned_reads.fastq \
-        > ${kit_id}/assembled_reads.fastq
+        aligned_reads.fastq \
+        > assembled_reads.fastq
     """
 }

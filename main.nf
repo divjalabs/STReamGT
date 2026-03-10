@@ -3,14 +3,14 @@
 params.input = "input.tsv"
 params.min_identity = 0.9
 params.min_overlap = 20
-params.ngsfilter = "/Users/elena/PycharmProjects/ngs_pipelines/DIVJA240/ngsfilters/DIVJA240_ngsfilter.csv"
+
 
 /*
 Import modules
 */
-include { MAKE_NGSFILTER } from './modules/make_ngsfilter'
 include { PAIR_FILTER } from './modules/pair_filter'
 include { DEMULTIPLEX_READS } from './modules/demultiplex_reads'
+include { PROCESS_LOCI } from './modules/process_loci'
 /*
 Load sample sheet
 */
@@ -30,22 +30,24 @@ samples_ch = Channel
         )
     }
 
+
+
+// the primers_ch will work only in case of one line in input.csv!!!
+
+primers_ch = samples_ch
+    .map { kit_id, sample_path, tags, tags_path, primers_path, r1, r2 ->
+        primers_path}
+        .splitCsv(header:true)           // parse CSV, automatically ignores header
+        .map { row -> row.locus }
+        .unique()                               // remove duplicate locus names
+
 /*
 Workflow execution
 */
 workflow {
-    ngsfilter_ch = MAKE_NGSFILTER(samples_ch)
     paired_ch = PAIR_FILTER(samples_ch)
-    demultiplex_input_ch = paired_ch.map { paired ->
-        def kit_id = paired[0]
-        def primers_path = paired[1]
-        def assembled_reads = paired[2]
-        
-        // get the first (and only) element from ngsfilter_ch
-        ngsfilter_ch.first().map { ngsfilter_file ->
-            tuple(kit_id, primers_path, assembled_reads, ngsfilter_file)
-        }
-}.flatten()
-
-    DEMULTIPLEX_READS(demultiplex_input_ch)
+    demultiplex_ch = DEMULTIPLEX_READS(paired_ch)
+    assigned_reads_file = demultiplex_ch.first()  // assume we have single fastq file at this stage
+    PROCESS_LOCI(primers_ch, assigned_reads_file)
 }
+
