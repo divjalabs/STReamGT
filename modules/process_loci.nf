@@ -1,13 +1,19 @@
 process PROCESS_LOCI{
 
-    container 'obitools4'
+    container 'obitools4_py'
 
+    publishDir { "intermediate" }, mode: 'copy'
+
+    input:
+    tuple val(locus), val(type), val(sequence), path(assigned_reads_file)
+    
+    output:
+    path "${locus}.csv"        // only keep the final CSV
 
     script:
     """
-    mkdir -p ${kit_id}
-    obigrep -a experiment=${loci} assigned_reads.fastq >${loci}.fastq
-    obiuniq -m sample ${loci}.fastq > ${loci}_uniq.fastq
-    obiannotate -k count -k merged_sample -k obimultiplex_forward_tag -k obimultiplex_reverse_tag ${loci}_uniq.fastq > ${loci}_cleaned.fastq
-    obicsv --auto -s ${loci}_cleaned.fastq > ${loci}.csv
+    obigrep -a experiment=${locus} assigned_reads.fastq > ${locus}.fastq
+    obiuniq -m sample ${locus}.fastq > ${locus}_uniq.fastq
+    obicsv -k experiment -k sample -k count -k obimultiplex_forward_tag -k obimultiplex_reverse_tag  -s ${locus}_uniq.fastq > ${locus}.csv
     """
+}

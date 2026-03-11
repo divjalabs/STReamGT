@@ -7,7 +7,7 @@
 
 import argparse
 import pandas as pd
-import os
+#import os
 import re
 
 # function to parse tag combo sets
@@ -54,6 +54,7 @@ def main():
     
     primers = pd.read_csv(args.primers_path).reset_index(drop=True)  # read file with primers
     primers = primers[["locus", "primerF", "primerR"]]
+    primers.drop_duplicates(inplace=True)
     
     tagcombo = pd.read_csv(args.tags_path) # read file with tags
     tags = parse_tags(args.tags)
@@ -78,10 +79,8 @@ def main():
     ngsfilter = ngsfilter[["locus", "Name", "tags", "primerF", "primerR"]]
     ngsfilter.columns = ["experiment",	"sample",	"sample_tag",	"forward_primer",	"reverse_primer"]
     
-    
-    folder = args.kit_id
-    os.makedirs(folder, exist_ok=True)
-    ngsfilter.to_csv(os.path.join(folder, f"{args.kit_id}_ngsfilter.csv"), index=False)
+
+    ngsfilter.to_csv(f"{args.kit_id}_ngsfilter_{args.tags}.csv", index=False)
     
 if __name__ == "__main__":
     main()
