@@ -1,0 +1,15 @@
+{
+"str_stutter_read_proportion": 0.18, 
+"str_disbalanced_allele_read_proportion": 0.33,
+"str_low_allele_flag_threshold": 100, 
+"str_allele_without_stutter_threshold": 100,
+"snp_low_allele_flag_threshold": 100,
+"snp_junk_proportion": 0.15,
+"snp_discard_allele_threshold": 20,
+"snp_disbalanced_allele_read_proportion": 0.15,
+"snp_divergence_if_not_low": 0.05, 
+"AlleleAcceptanceThreshold": 2,
+"AlleleAcceptanceThreshold_hetero": 2,
+"negative_name": "blank",
+"discard_threshold": 1
+}
