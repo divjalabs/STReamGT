@@ -1,4 +1,5 @@
-#!/Users/elena/miniconda3/envs/ngs_pipelines/bin/python
+#!/usr/bin/env python3
+# for testing only#!/Users/elena/miniconda3/envs/ngs_pipelines/bin/python
 
 import argparse
 import pandas as pd
@@ -61,7 +62,7 @@ def call_alleles_vectorized(alleles, distribution, parameters):
 def parse_reference_snp(ref_string):
     refs = []
 
-    for item in ref_string.split(";"):
+    for item in ref_string.split("/"):
         name, seq = item.split(":")
         seq = seq.strip()
         refs.append((name, seq, len(seq))) # save to tuple
@@ -153,14 +154,13 @@ def main():
     parser.add_argument("--locus_sequence")
     parser.add_argument("--progressive_threshold", default=True)
     parser.add_argument("--alleles_only", default=True)
+    parser.add_argument("--parameters_file_path", default="/usr/local/bin/parameters.json")
+    parser.add_argument("--ngsfilter_path")
+    
 
     args = parser.parse_args()
 
-    
-    if not os.path.isfile("parameters.json"):
-        print("Check the parameters.json file, it should be together with the script")
-        exit()
-    with open("parameters.json", "r") as f:
+    with open(args.parameters_file_path, "r") as f:
         data = f.read()
         f.close()
 
@@ -225,15 +225,20 @@ def main():
     if args.alleles_only:
         all_geno = all_geno[all_geno["stutter"] | all_geno["called"]]
     # format for the database
+    ngsfilter = pd.read_csv(args.ngsfilter_path)
+    ngsfilter = ngsfilter[["sample","sample_tag"]]
+    ngsfilter = ngsfilter.rename(columns={"sample_tag":"TagCombo"})
+    ngsfilter = ngsfilter.drop_duplicates(subset="sample")
+    all_geno = pd.merge(all_geno, ngsfilter,left_on="Sample_Name", right_on="sample", how='left')
+
+
     all_geno["Plate"] = all_geno["Sample_Name"].apply(lambda row: row.split("__")[-1]).str.replace("PP", "")
     all_geno["Position"] = all_geno["Sample_Name"].apply(lambda row: row.split("__")[-2]).astype(int)
     all_geno["Sample_Name"] = all_geno["Sample_Name"].apply(lambda row: row.split("__")[0])
     all_geno["Marker"],all_geno["Run_Name"] = args.locus_name, args.kit_id
-    all_geno["TagCombo"] = "" # TODO: check, if we need tagcombo
     all_geno["called"] = all_geno["called"].astype(str).str.upper()
     all_geno["stutter"] = all_geno["stutter"].astype(str).str.upper()
     all_geno.rename(columns={"sequence": "Sequence"}, inplace=True)
-
 
     all_geno = all_geno[["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position", "called", "flag", "stutter", "Sequence", "TagCombo"]]
     all_geno.to_csv(f"{args.kit_id}_{args.locus_name}_genotypes.txt", sep="\t", index=False)
@@ -246,6 +251,7 @@ def main():
 
 
     positions = all_geno[["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position", "TagCombo"]].copy()
+    positions[["Read_Count", "length"]] = positions[["Read_Count", "length"]].astype("string") # convert to string first to avoid pandas warning
     positions.loc[:, ["Read_Count", "length"]] = ""
     positions.drop_duplicates(inplace=True, keep="last")
     positions.to_csv(f"{args.kit_id}_{args.locus_name}_positions.txt", sep="\t", index=False)

@@ -2,10 +2,11 @@ process DEMULTIPLEX_READS {
 
     container 'obitools4_py'
 
-    publishDir { "intermediate/${kit_id}" }, mode: 'symlink'
+    publishDir params.intermediate_dir, mode: 'symlink'
 
     input:
-    tuple val(kit_id), path(assembled_reads), path(ngsfilter_file)
+    path assembled_reads
+    path ngsfilter_file
 
     output:
     path("assigned_reads.fastq")
