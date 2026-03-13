@@ -16,18 +16,19 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Copy requirements and install
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
-
+RUN python3 -m pip install pandas
 # Copy Python scripts into PATH
 COPY bin/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.py
 
 RUN curl -L https://raw.githubusercontent.com/metabarcoding/obitools4/master/install_obitools.sh | bash
-# Set working directory
-WORKDIR /data
 
 # Make scripts executable via PATH
 ENV PATH="/usr/local/bin:$PATH"
+#ENV PATH="/root/.local/bin:/usr/local/bin:$PATH"
+
+# Set working directory
+WORKDIR /data
 
 # Default command
 ENTRYPOINT []
