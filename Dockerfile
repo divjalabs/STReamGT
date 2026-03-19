@@ -1,9 +1,6 @@
-# -------------------------------
-# Dockerfile: Python scripts only
-# -------------------------------
 FROM ubuntu:22.04
 
-# Install Python and build dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3 python3-venv python3-pip \
     curl unzip build-essential ca-certificates \
@@ -12,25 +9,28 @@ RUN apt-get update && apt-get install -y \
 # Make 'python' command available
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
-# Create a Python virtual environment
+# Create virtual environment
 RUN python3 -m venv /opt/venv
 
-# Upgrade pip inside the virtualenv
+# Upgrade pip
 RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Copy requirements and install inside the virtualenv
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Copy your Python scripts into /usr/local/bin
+# Install OBITools4
+RUN curl -L https://raw.githubusercontent.com/metabarcoding/obitools4/master/install_obitools.sh | bash -s -- --version 4.4.29
+
+# Copy your scripts
 COPY bin/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.py
 
-# Activate virtualenv automatically for all commands
-ENV PATH="/opt/venv/bin:/usr/local/bin:$PATH"
+# Activate virtualenv + include OBITools
+ENV PATH="/opt/venv/bin:/root/.local/bin:/usr/local/bin:$PATH"
 
 # Set working directory
 WORKDIR /data
 
-# Flexible execution — no fixed entrypoint
+# No fixed entrypoint (Nextflow-friendly)
 ENTRYPOINT []

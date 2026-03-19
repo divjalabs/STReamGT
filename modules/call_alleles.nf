@@ -1,6 +1,4 @@
 process CALL_ALLELES{
-
-    container 'python_scripts_only'
     
     input:
     tuple val(locus_name), val(locus_type), val(locus_sequence), path(locus_csv), path(counts_csv)
@@ -20,6 +18,7 @@ process CALL_ALLELES{
 }
 
 process MERGE_ALLELES{
+
 
     publishDir params.results_dir, mode: 'copy'
 

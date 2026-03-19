@@ -1,7 +1,5 @@
 process DEMULTIPLEX_READS {
-
-    container 'obitools4_py'
-
+    
     publishDir params.intermediate_dir, mode: 'symlink'
 
     input:
@@ -9,13 +7,14 @@ process DEMULTIPLEX_READS {
     path ngsfilter_file
 
     output:
-    path("assigned_reads.fastq")
+    path("assigned_reads.fastq"), emit: assigned_reads
+    path("ngsfilter_stat.txt"), emit: ngsfilter_stats
 
     script:
     """
-    obimultiplex \
-        -s ${ngsfilter_file} \
-        ${assembled_reads} \
-        > assigned_reads.fastq
+    obimultiplex -s ${ngsfilter_file} ${assembled_reads} -u not_assigned.fastq > assigned_reads.fastq
+    obicsv -k obimultiplex_error not_assigned.fastq > obimultiplex_errors.csv
+    tail -n+2 obimultiplex_errors.csv | sort  | uniq -c > ngsfilter_stat.txt
+
     """
 }

@@ -9,7 +9,7 @@
       "x": 840.1519114056418,
       "y": 348.1173326865344,
       "width": 768.3999823653863,
-      "height": 804.9497975331604,
+      "height": 583.5866755421494,
       "angle": 0,
       "strokeColor": "#1e1e1e",
       "backgroundColor": "#ffec99",
@@ -25,11 +25,11 @@
         "type": 3
       },
       "seed": 1106999742,
-      "version": 1340,
-      "versionNonce": 811180094,
+      "version": 1373,
+      "versionNonce": 574385022,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1772876063639,
+      "updated": 1773936295099,
       "link": null,
       "locked": false
     },
@@ -1256,16 +1256,20 @@
       "index": "aU",
       "roundness": null,
       "seed": 149177762,
-      "version": 846,
-      "versionNonce": 1517218494,
+      "version": 847,
+      "versionNonce": 1437329086,
       "isDeleted": false,
       "boundElements": [
         {
           "id": "SaE3WO8m1u_PvCNBjK7_R",
           "type": "arrow"
+        },
+        {
+          "id": "3cGPNvsCvveOycb-qKFo7",
+          "type": "arrow"
         }
       ],
-      "updated": 1772875929348,
+      "updated": 1773936302698,
       "link": null,
       "locked": false,
       "text": ".ngsfilter file",
@@ -2099,10 +2103,10 @@
     {
       "id": "izetDuoxV0fGsSmjUCx1Q",
       "type": "arrow",
-      "x": 786.6644263552789,
-      "y": 847.3775346875196,
-      "width": 146.41815902250846,
-      "height": 111.98249915065196,
+      "x": 764.3105613337624,
+      "y": 983.8102890645299,
+      "width": 168.35497740408675,
+      "height": 2.079337417820284,
       "angle": 0,
       "strokeColor": "#1971c2",
       "backgroundColor": "transparent",
@@ -2118,11 +2122,11 @@
         "type": 2
       },
       "seed": 563121278,
-      "version": 494,
-      "versionNonce": 1180918370,
+      "version": 645,
+      "versionNonce": 1120951522,
       "isDeleted": false,
       "boundElements": null,
-      "updated": 1772875728733,
+      "updated": 1773416266967,
       "link": null,
       "locked": false,
       "points": [
@@ -2131,16 +2135,20 @@
           0
         ],
         [
-          146.41815902250846,
-          111.98249915065196
+          168.35497740408675,
+          -2.079337417820284
         ]
       ],
       "lastCommittedPoint": null,
-      "startBinding": null,
+      "startBinding": {
+        "elementId": "C8BqjXooIv2C9ZYUgnrdx",
+        "focus": -1.0168385324995937,
+        "gap": 14
+      },
       "endBinding": {
         "elementId": "5OtEHhiwzwb2c5UjyT766",
-        "focus": -0.4998101565140094,
-        "gap": 2.2594989335163973
+        "focus": 0.04353303726902463,
+        "gap": 1
       },
       "startArrowhead": null,
       "endArrowhead": "arrow",
@@ -2149,8 +2157,8 @@
     {
       "id": "C8BqjXooIv2C9ZYUgnrdx",
       "type": "text",
-      "x": 682.0637476017994,
-      "y": 820.6213014831284,
+      "x": 519.9307242976297,
+      "y": 986.9404182598914,
       "width": 230.3798370361328,
       "height": 25,
       "angle": 0,
@@ -2166,11 +2174,16 @@
       "index": "at",
       "roundness": null,
       "seed": 479919202,
-      "version": 104,
-      "versionNonce": 1588872738,
+      "version": 204,
+      "versionNonce": 1061343522,
       "isDeleted": false,
-      "boundElements": null,
-      "updated": 1772791579095,
+      "boundElements": [
+        {
+          "id": "izetDuoxV0fGsSmjUCx1Q",
+          "type": "arrow"
+        }
+      ],
+      "updated": 1773416266967,
       "link": null,
       "locked": false,
       "text": "allele names from Mbase",
@@ -3626,8 +3639,8 @@
     {
       "id": "_mzCdRe6qtN-j02cE0fHt",
       "type": "freedraw",
-      "x": 1113.2583585541115,
-      "y": 596.1837724574627,
+      "x": 1099.5685138974716,
+      "y": 610.6372494225358,
       "width": 30.002114579417366,
       "height": 57.88593639950045,
       "angle": 0,
@@ -3643,11 +3656,11 @@
       "index": "b0f",
       "roundness": null,
       "seed": 584767202,
-      "version": 40,
-      "versionNonce": 764826082,
+      "version": 68,
+      "versionNonce": 1937382910,
       "isDeleted": false,
       "boundElements": null,
-      "updated": 1772880878729,
+      "updated": 1773419344033,
       "link": null,
       "locked": false,
       "points": [
@@ -3818,10 +3831,10 @@
     {
       "id": "gBQIkfjXcN7m0WPuR103g",
       "type": "text",
-      "x": 1684.5576230709762,
-      "y": 369.5707744876629,
-      "width": 470.0078125,
-      "height": 210,
+      "x": 1670.4443095887505,
+      "y": 547.1291704221844,
+      "width": 882.3355712890625,
+      "height": 700,
       "angle": 0,
       "strokeColor": "#e03131",
       "backgroundColor": "#ffec99",
@@ -3835,20 +3848,20 @@
       "index": "b0g",
       "roundness": null,
       "seed": 2125513058,
-      "version": 638,
-      "versionNonce": 839699454,
+      "version": 1370,
+      "versionNonce": 78256126,
       "isDeleted": false,
       "boundElements": null,
-      "updated": 1773415140288,
+      "updated": 1773930162527,
       "link": null,
       "locked": false,
-      "text": "next: \n-check working directory structure\n\n\n\n",
+      "text": "next: \n-diagnostic data:\nnumber and % of reads discarded at each step\nnumber and % of reads different types of ngsfilter error\nnumber  of reads and alleles per locus/per replicate\nPlot with read counts per position with +- controls marked\n\n- consensus genotype without naming\n\n- script to prepare inputs: now input just from one kit is allowed\n\n- test on Ribica server: Make a profile without Docker!\n\n- review primer and tag files\n\n\n\n\n\n",
       "fontSize": 28,
       "fontFamily": 5,
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "next: \n-check working directory structure\n\n\n\n",
+      "originalText": "next: \n-diagnostic data:\nnumber and % of reads discarded at each step\nnumber and % of reads different types of ngsfilter error\nnumber  of reads and alleles per locus/per replicate\nPlot with read counts per position with +- controls marked\n\n- consensus genotype without naming\n\n- script to prepare inputs: now input just from one kit is allowed\n\n- test on Ribica server: Make a profile without Docker!\n\n- review primer and tag files\n\n\n\n\n\n",
       "autoResize": true,
       "lineHeight": 1.25
     },
@@ -3929,8 +3942,8 @@
     {
       "id": "ft4bjcFRMAoCO7lnLSX3j",
       "type": "text",
-      "x": 1929.5200250995022,
-      "y": 113.59453254950577,
+      "x": 1689.1979955236616,
+      "y": 241.01699637943668,
       "width": 715.147705078125,
       "height": 140,
       "angle": 0,
@@ -3946,20 +3959,337 @@
       "index": "b0k",
       "roundness": null,
       "seed": 527197310,
-      "version": 329,
-      "versionNonce": 1665321342,
+      "version": 406,
+      "versionNonce": 881184418,
       "isDeleted": false,
       "boundElements": null,
-      "updated": 1773415504914,
+      "updated": 1773419560665,
       "link": null,
       "locked": false,
-      "text": "TODO later:\nfunction to check inputs in callAllele.py\nmaybe separate SNP and STR callers\n- If one locus failed - the workflow should continue.",
+      "text": "TODO later:\n- function to check inputs in callAllele.py\n- maybe separate SNP and STR callers\n- If one locus failed - the workflow should continue.",
       "fontSize": 28,
       "fontFamily": 5,
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "TODO later:\nfunction to check inputs in callAllele.py\nmaybe separate SNP and STR callers\n- If one locus failed - the workflow should continue.",
+      "originalText": "TODO later:\n- function to check inputs in callAllele.py\n- maybe separate SNP and STR callers\n- If one locus failed - the workflow should continue.",
+      "autoResize": true,
+      "lineHeight": 1.25
+    },
+    {
+      "id": "q4VnlNUkXRzW3RFHtZaXF",
+      "type": "freedraw",
+      "x": 1088.278368426625,
+      "y": 731.4350328952099,
+      "width": 30.002114579417366,
+      "height": 57.88593639950045,
+      "angle": 0,
+      "strokeColor": "#ff8787",
+      "backgroundColor": "#ffec99",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "index": "b0l",
+      "roundness": null,
+      "seed": 1021476094,
+      "version": 79,
+      "versionNonce": 1274733730,
+      "isDeleted": false,
+      "boundElements": [],
+      "updated": 1773419340349,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0.008439413383712235,
+          0.7511077911584607
+        ],
+        [
+          1.0464872595914585,
+          2.523384601756902
+        ],
+        [
+          2.8187640701899,
+          4.9961327232109625
+        ],
+        [
+          5.4012245656335836,
+          9.22427882849604
+        ],
+        [
+          8.025882127996056,
+          13.52837965423521
+        ],
+        [
+          10.009144273189577,
+          17.072933275432206
+        ],
+        [
+          12.017724658534462,
+          21.081654632738378
+        ],
+        [
+          13.545258481002747,
+          24.55025353348117
+        ],
+        [
+          14.61706398074557,
+          27.039880481702767
+        ],
+        [
+          15.570717693115284,
+          28.668687264776622
+        ],
+        [
+          16.18679487013287,
+          29.900841618811796
+        ],
+        [
+          16.347143724425223,
+          31.749073149864557
+        ],
+        [
+          16.575007885787727,
+          31.95161907107581
+        ],
+        [
+          16.68472025977735,
+          31.976937311227175
+        ],
+        [
+          16.726917326696366,
+          31.521208988501826
+        ],
+        [
+          16.726917326696366,
+          30.635070583202605
+        ],
+        [
+          16.414659031495603,
+          28.128564808213355
+        ],
+        [
+          16.10240073629484,
+          26.491318611755673
+        ],
+        [
+          16.10240073629484,
+          24.45741998625931
+        ],
+        [
+          16.10240073629484,
+          22.423521360762948
+        ],
+        [
+          16.10240073629484,
+          19.92545499915741
+        ],
+        [
+          16.10240073629484,
+          17.300797436794824
+        ],
+        [
+          16.10240073629484,
+          13.739364988830289
+        ],
+        [
+          16.10240073629484,
+          8.945778186830466
+        ],
+        [
+          16.10240073629484,
+          4.008721357306172
+        ],
+        [
+          16.3809013779603,
+          -0.32069770858447555
+        ],
+        [
+          17.368312743865317,
+          -4.658556187858949
+        ],
+        [
+          18.836770672646935,
+          -9.333991202485436
+        ],
+        [
+          21.0563363925869,
+          -14.262608618626018
+        ],
+        [
+          23.360296246364896,
+          -18.203814668861696
+        ],
+        [
+          25.23384601756902,
+          -20.820032817840456
+        ],
+        [
+          26.4997580251395,
+          -22.78641613626644
+        ],
+        [
+          27.32682053675194,
+          -23.630357474646644
+        ],
+        [
+          28.238277182202637,
+          -24.609329427167722
+        ],
+        [
+          28.921869666290604,
+          -25.318240151407167
+        ],
+        [
+          29.47043153623781,
+          -25.62205903322399
+        ],
+        [
+          30.002114579417366,
+          -25.908999088273276
+        ],
+        [
+          30.002114579417366,
+          -25.908999088273276
+        ]
+      ],
+      "pressures": [],
+      "simulatePressure": true,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "dm0ed-e2mKcI0ZLAleFyO",
+      "type": "text",
+      "x": 1619.7050599542406,
+      "y": 128.4250147227582,
+      "width": 659.6517944335938,
+      "height": 70,
+      "angle": 0,
+      "strokeColor": "#e03131",
+      "backgroundColor": "#ffec99",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "index": "b0m",
+      "roundness": null,
+      "seed": 353042978,
+      "version": 247,
+      "versionNonce": 617537982,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 1773932537843,
+      "link": null,
+      "locked": false,
+      "text": "PROBLEM: Docker cannot be run without sudo. \nShould I try singularity container?",
+      "fontSize": 28,
+      "fontFamily": 5,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "originalText": "PROBLEM: Docker cannot be run without sudo. \nShould I try singularity container?",
+      "autoResize": true,
+      "lineHeight": 1.25
+    },
+    {
+      "id": "3cGPNvsCvveOycb-qKFo7",
+      "type": "arrow",
+      "x": 1698.4112927798951,
+      "y": 459.39371630572145,
+      "width": 550.3798111004735,
+      "height": 79.23436677823906,
+      "angle": 0,
+      "strokeColor": "#e03131",
+      "backgroundColor": "#ffec99",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "index": "b0o",
+      "roundness": {
+        "type": 2
+      },
+      "seed": 406135422,
+      "version": 158,
+      "versionNonce": 924624994,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 1773936307556,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -272.0460811432997,
+          -79.23436677823906
+        ],
+        [
+          -550.3798111004735,
+          -29.161558517013646
+        ]
+      ],
+      "lastCommittedPoint": null,
+      "startBinding": null,
+      "endBinding": {
+        "elementId": "W1vjt7ruOdNVLvSDJjjOJ",
+        "focus": -1.551342893018507,
+        "gap": 14
+      },
+      "startArrowhead": null,
+      "endArrowhead": "arrow",
+      "elbowed": false
+    },
+    {
+      "id": "MNXK9aG6EKSg9Vg0NKDzD",
+      "type": "text",
+      "x": 1707.6036783329828,
+      "y": 437.74736119507475,
+      "width": 558.1798095703125,
+      "height": 35,
+      "angle": 0,
+      "strokeColor": "#e03131",
+      "backgroundColor": "#ffec99",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "index": "b0p",
+      "roundness": null,
+      "seed": 292978430,
+      "version": 126,
+      "versionNonce": 549063586,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 1773936323134,
+      "link": null,
+      "locked": false,
+      "text": "make position file as a separate process.",
+      "fontSize": 28,
+      "fontFamily": 5,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "originalText": "make position file as a separate process.",
       "autoResize": true,
       "lineHeight": 1.25
     }
