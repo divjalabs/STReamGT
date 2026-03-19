@@ -249,11 +249,13 @@ def main():
     frequency.to_csv(f"{args.kit_id}_{args.locus_name}_frequency_of_sequences_by_marker.txt", sep="\t", index=False)
 
 
-
-    positions = all_geno[["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position", "TagCombo"]].copy()
-    positions[["Read_Count", "length"]] = positions[["Read_Count", "length"]].astype("string") # convert to string first to avoid pandas warning
-    positions.loc[:, ["Read_Count", "length"]] = ""
-    positions.drop_duplicates(inplace=True, keep="last")
+    positions = ngsfilter.copy()
+    positions["Plate"] = positions["sample"].apply(lambda row: row.split("__")[-1]).str.replace("PP", "")
+    positions["Position"] = positions["sample"].apply(lambda row: row.split("__")[-2]).astype(int)
+    positions["Sample_Name"] = positions["sample"].apply(lambda row: row.split("__")[0])
+    positions["Read_Count"], positions["length"] = "", ""
+    positions["Marker"],positions["Run_Name"] = locus_name, kit_id
+    positions = positions[["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position", "TagCombo"]]
     positions.to_csv(f"{args.kit_id}_{args.locus_name}_positions.txt", sep="\t", index=False)
 
 if __name__ == "__main__":

@@ -1,8 +1,6 @@
 process PAIR_FILTER {
 
-    container 'obitools4_py'
-
-    publishDir params.intermediate_dir, mode: 'copy'
+    publishDir params.intermediate_dir, mode: 'symlink'
 
     input:
     tuple path(r1), path(r2)

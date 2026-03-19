@@ -1,6 +1,5 @@
 process PROCESS_LOCI{
 
-    container 'obitools4_py'
 
     publishDir params.intermediate_dir, mode: 'copy'
 

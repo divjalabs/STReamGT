@@ -7,13 +7,23 @@ params.input = "input.tsv"
 params.min_identity = 0.9
 params.min_overlap = 20
 
-
 // extract kit_id from TSV
 kit_id_val = file(params.input)
     .text
     .readLines()
     .drop(1)            // skip header
     .collect { it.split('\t')[0] }  // kit_id has to be the first column
+    .unique()[0]        // kit_id has to be unique
+
+
+
+
+
+fastq1_path = file(params.input)
+    .text
+    .readLines()
+    .drop(1)            // skip header
+    .collect { it.split('\t')[5] }  // kit_id has to be the first column
     .unique()[0]        // kit_id has to be unique
 
 params.kit_id = kit_id_val
@@ -36,6 +46,7 @@ include { DEMULTIPLEX_READS } from './modules/demultiplex_reads'
 include { PROCESS_LOCI } from './modules/process_loci'
 include { CALL_ALLELES } from './modules/call_alleles'
 include { MERGE_ALLELES } from './modules/call_alleles'
+include { CREATE_SUMMARY } from './modules/create_summary'
 
 // Load sample sheet
 
@@ -58,6 +69,10 @@ pair_filter_input_ch = samples_ch
     .map { row -> tuple(file(row.fastq1_path), file(row.fastq2_path)) }
     .take(1) // channel with a single tuple 
 
+forward_fastq = samples_ch
+    .map { row -> file(row.fastq1_path) }  // only forward read
+    .first()                               // only the first sample
+
 
 // Loci data
 primers_input_ch = samples_ch
@@ -75,13 +90,14 @@ Workflow execution
 */
 workflow {
 
+    // saved_inputs = SAVE_INPUTS() // copy inputs to the input directory, need to write module for it 
+
     ngsfilter_parts_ch = MAKE_NGSFILTER(ngsfilter_input_ch)
     ngsfilter_files_ch = ngsfilter_parts_ch.collect()
     ngsfilter = MERGE_NGSFILTER(ngsfilter_files_ch)
     paired_ch = PAIR_FILTER(pair_filter_input_ch)
     demultiplex_ch = DEMULTIPLEX_READS(paired_ch, ngsfilter)
-    // assigned_reads_file = demultiplex_ch.first()  // assume we have single fastq file at this stage
-    loci_reads_ch = primers_ch.combine(demultiplex_ch)
+    loci_reads_ch = primers_ch.combine(demultiplex_ch.assigned_reads)
 
     loci_ch = PROCESS_LOCI(loci_reads_ch)
     call_alleles_ch = CALL_ALLELES(loci_ch, ngsfilter)
@@ -93,6 +109,14 @@ workflow {
     freq_list      = freq_ch.collect()
     pos_list       = pos_ch.collect()
     MERGE_ALLELES(genotypes_list, freq_list, pos_list)
+        CREATE_SUMMARY(
+        params.kit_id,
+        fastq1_path,   // raw input FASTQs
+        paired_ch,              // paired-filtered FASTQs
+        demultiplex_ch.assigned_reads,      // reads that passed ngsfilter
+        demultiplex_ch.ngsfilter_stats    // stats/errors from demultiplex
+    )
+
     
     //gzip or delete intermediate files 
 
