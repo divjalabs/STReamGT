@@ -1,5 +1,4 @@
 process MAKE_NGSFILTER {
-    container "python_scripts_only"
 
     input:
     tuple path(sample_path), val(tags), path(tags_path), path(primers_path)
@@ -15,7 +14,6 @@ process MAKE_NGSFILTER {
 }
 
 process MERGE_NGSFILTER {
-
     
     publishDir params.intermediate_dir, mode: 'copy'
 

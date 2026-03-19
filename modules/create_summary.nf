@@ -1,7 +1,5 @@
 process CREATE_SUMMARY {
     
-    container "${params.container}"
-
     tag "${kit_id}"
 
     publishDir params.reports_dir, mode: 'copy'

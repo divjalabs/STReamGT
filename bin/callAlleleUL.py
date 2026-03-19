@@ -254,7 +254,7 @@ def main():
     positions["Position"] = positions["sample"].apply(lambda row: row.split("__")[-2]).astype(int)
     positions["Sample_Name"] = positions["sample"].apply(lambda row: row.split("__")[0])
     positions["Read_Count"], positions["length"] = "", ""
-    positions["Marker"],positions["Run_Name"] = locus_name, kit_id
+    positions["Marker"],positions["Run_Name"] = args.locus_name, args.kit_id
     positions = positions[["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position", "TagCombo"]]
     positions.to_csv(f"{args.kit_id}_{args.locus_name}_positions.txt", sep="\t", index=False)
 
