@@ -1,0 +1,295 @@
+---
+title: "Genotype report"
+author: "Elena Pazhenkova"
+date: "2026-03-16"
+output: html_document
+params:
+  expected_read_number: 10000000
+  run_stats: "/Users/elena/PycharmProjects/ngs_pipelines/STReamGT/DIVJA240/reports/DIVJA240_reads_summary.csv"
+  alleles: "/Users/elena/PycharmProjects/ngs_pipelines/STReamGT/DIVJA240/results/DIVJA240_genotypes.txt"
+  positions: "/Users/elena/PycharmProjects/ngs_pipelines/STReamGT/DIVJA240/results/DIVJA240_positions.txt"
+
+---
+
+
+#Rscript -e "rmarkdown::render('example.Rmd',params=list(args = myarg))"
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(plotly)
+```
+
+
+```{r read_arg, include=FALSE}
+#Parse the parameters ans read the files
+run_stats <- read.csv(params$run_stats)
+libary_name <- run_stats$kit_id
+
+alleles <- read.csv(params$alleles, sep = "\t")
+positions <- read.csv(params$positions, sep = "\t")
+```
+
+
+
+
+input.tsv kit_id	sample_path	tags	tags_path	primers_path	fastq1_path	fastq2_path ADD: expected read number 
+ngsfilter_errors: /Users/elena/PycharmProjects/ngs_pipelines/STReamGT/DIVJA240/intermediate/ngsfilter_stat.txt 
+```{r}
+run_stats_long <- run_stats %>%
+  pivot_longer(
+    cols = starts_with("reads"),
+    names_to = "step",
+    values_to = "reads"
+  ) %>% mutate(
+    step = factor(step,levels = c(
+        "reads_sequenced",
+        "reads_paired_filtered",
+        "reads_pass_ngsfilter"), labels = c(
+        "Produced",
+        "Aligned",
+        "Assinged to samples")))
+
+
+
+ggplot(run_stats_long, aes(x = step, y = reads, fill = step)) +
+  geom_col(width = 0.7) +
+  geom_hline(
+    yintercept = params$expected_read_number,
+    linetype = "dashed",
+    size = 1
+  ) + 
+  scale_y_continuous(labels = scales::comma) +
+  labs(
+    title = paste("Read counts for kit", libary_name),
+    x = "",
+    y = "Number of reads"
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  ) 
+```
+* as produced reads we count only one-direction (F or R) reads. Dashed line shows number of reads ordered in sequencing company.
+
+
+```{r}
+# chunk to check ngsfilter errors.
+```
+
+
+
+number  of reads and alleles per locus/per replicate
+
+```{r}
+reads_per_marker <- alleles %>% group_by(Marker) %>% summarise(sum_reads = sum(Read_Count))
+```
+
+```{r}
+sequences_per_marker <- alleles %>% group_by(Marker) %>% summarise(n_seq = n_distinct(Sequence))
+```
+
+
+```{r}
+df <-  alleles
+rows <- LETTERS[1:8]
+df$row <- rows[(df$Position - 1) %/% 12 + 1]
+df$col <- (df$Position - 1) %% 12 + 1
+
+
+agg <- df %>%
+  filter(called == TRUE) %>%
+  group_by(Plate, Marker, row, col) %>%
+  summarise(
+    reads = sum(Read_Count),
+    .groups = "drop"
+  )
+```
+
+
+
+```{r}
+# select plate and marker
+d <- agg %>% filter(Plate == 1, Marker == "UA_03")
+
+fig <- plot_ly(
+  d,
+  x = ~col,
+  y = ~row,
+  z = ~reads,
+  type = "heatmap",
+  colorscale = "Viridis",
+  showscale = TRUE
+) %>%
+  add_trace(
+    x = d$col,
+    y = d$row,
+    type = "scatter",
+    mode = "text",
+    text = d$reads,
+    textposition = "middle center",
+    textfont = list(color = "white"),
+    hoverinfo = "none",
+    showlegend = FALSE
+  ) %>%
+  layout(
+    title = "Plate 1 — UA_03",
+    xaxis = list(side = "top", dtick = 1, title = list(text = "")),
+    yaxis = list(scaleanchor = "x", categoryorder = "array", categoryarray = rev(LETTERS[1:8]), title = list(text = ""))
+  )
+
+fig
+```
+
+```{r}
+library(plotly)
+library(dplyr)
+
+plot_plate <- function(data, plate_id, marker_id){
+  d <- data %>% filter(Plate == plate_id, Marker == marker_id)
+  
+  fig <- plot_ly(
+    d,
+    x = ~col,
+    y = ~row,
+    z = ~reads,
+    type = "heatmap",
+    colorscale = "Viridis",
+    showscale = TRUE,
+    colorbar = list(title = "") # remove legend title
+  ) %>%
+    add_trace(
+      x = d$col,
+      y = d$row,
+      type = "scatter",
+      mode = "text",
+      text = d$reads,
+      textposition = "middle center",
+      textfont = list(color = "white"),
+      hoverinfo = "none",
+      showlegend = FALSE
+    ) %>%
+    layout(
+      title = paste(plate_id),
+      xaxis = list(side = "top", dtick = 1, title = list(text = "")),
+      yaxis = list(scaleanchor = "x",
+                   categoryorder = "array",
+                   categoryarray = rev(LETTERS[1:8]),
+                   title = list(text = ""))
+    )
+  
+  fig
+}
+```
+
+```{r}
+plates <- sort(unique(agg$Plate))
+marker_id <- "UA_03"
+
+fig_list <- lapply(plates, function(p){
+  plot_plate(agg, plate_id = p, marker_id = marker_id)
+})
+```
+
+```{r}
+fig_facet <- subplot(
+  fig_list,
+  nrows = 2,
+  margin = 0.05,
+  shareX = TRUE,
+  shareY = TRUE,
+  titleX = TRUE,
+  titleY = TRUE
+)
+
+fig_facet
+```
+
+
+
+
+```{r}
+plates <- sort(unique(agg$Plate))
+markers <- sort(unique(agg$Marker))
+```
+
+
+```{r}
+plot_plate_marker <- function(data, plate_id, marker_id){
+  d <- data %>% filter(Plate == plate_id, Marker == marker_id)
+  
+  plot_ly(
+    d,
+    x = ~col,
+    y = ~row,
+    z = ~reads,
+    type = "heatmap",
+    colorscale = "Viridis",
+    showscale = TRUE,
+    colorbar = list(title = ""),
+    visible = FALSE,           # all traces invisible by default
+    name = paste0("Plate ", plate_id)
+  ) %>%
+    add_trace(
+      x = d$col,
+      y = d$row,
+      type = "scatter",
+      mode = "text",
+      text = d$reads,
+      textposition = "middle center",
+      textfont = list(color = "white"),
+      hoverinfo = "none",
+      showlegend = FALSE,
+      visible = FALSE
+    )
+}
+```
+
+
+
+```{r}
+n_traces <- length(markers) * length(plates)
+menu_buttons <- list()
+
+for(i in seq_along(markers)){
+  visible_vector <- rep(FALSE, n_traces)
+  start <- (i-1)*length(plates) + 1
+  end <- i*length(plates)
+  visible_vector[start:end] <- TRUE
+  
+  menu_buttons[[i]] <- list(
+    method = "update",
+    args = list(list(visible = visible_vector)),
+    label = markers[i]
+  )
+}
+
+fig <- fig %>%
+  layout(
+    updatemenus = list(
+      list(
+        active = 0,
+        buttons = menu_buttons,
+        x = 0.1,
+        y = 1.15,
+        xanchor = "left",
+        yanchor = "top"
+      )
+    )
+  )
+```
+
+
+```{r}
+# set first marker visible
+fig$x$data[1:(length(plates)*2)] <- lapply(fig$x$data[1:(length(plates)*2)], function(tr){
+  tr$visible <- TRUE
+  tr
+})
+```
+
+
+```{r}
+fig
+```
+

@@ -7,7 +7,47 @@ import os
 import re
 
 
-#STR alele calling 
+# Output column layouts (kept in one place so an empty-locus file matches a populated one).
+GENOTYPE_COLUMNS = ["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name",
+                    "length", "Position", "called", "flag", "stutter", "Sequence", "TagCombo"]
+FREQUENCY_COLUMNS = ["Marker", "N", "Sequence"]
+POSITION_COLUMNS = ["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name",
+                    "length", "Position", "TagCombo"]
+
+
+def read_csv_or_empty(path):
+    """Read a CSV, returning an empty DataFrame if the file has no rows/columns."""
+    try:
+        return pd.read_csv(path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+
+def positions_from_ngsfilter(ngsfilter_path, locus_name, kit_id):
+    """Build the positions table from the ngsfilter alone (independent of read counts)."""
+    ngsfilter = pd.read_csv(ngsfilter_path)[["sample", "sample_tag"]]
+    ngsfilter = ngsfilter.rename(columns={"sample_tag": "TagCombo"}).drop_duplicates(subset="sample")
+    pos = ngsfilter.copy()
+    pos["Plate"] = pos["sample"].apply(lambda r: r.split("__")[-1]).str.replace("PP", "")
+    pos["Position"] = pos["sample"].apply(lambda r: r.split("__")[-2]).astype(int)
+    pos["Sample_Name"] = pos["sample"].apply(lambda r: r.split("__")[0])
+    pos["Read_Count"], pos["length"] = "", ""
+    pos["Marker"], pos["Run_Name"] = locus_name, kit_id
+    return pos[POSITION_COLUMNS]
+
+
+def write_empty_locus(args):
+    """Emit valid (header-only genotype/frequency + full positions) outputs for a locus
+    that had no reads, so one dead locus doesn't fail the whole run (MERGE_ALLELES still works)."""
+    pd.DataFrame(columns=GENOTYPE_COLUMNS).to_csv(
+        f"{args.kit_id}_{args.locus_name}_genotypes.txt", sep="\t", index=False)
+    pd.DataFrame(columns=FREQUENCY_COLUMNS).to_csv(
+        f"{args.kit_id}_{args.locus_name}_frequency_of_sequences_by_marker.txt", sep="\t", index=False)
+    positions_from_ngsfilter(args.ngsfilter_path, args.locus_name, args.kit_id).to_csv(
+        f"{args.kit_id}_{args.locus_name}_positions.txt", sep="\t", index=False)
+
+
+#STR alele calling
 def generate_stutters(seq, motif):
     """Return all unique sequences obtained by removing one motif occurrence."""
     positions = [m.start() for m in re.finditer(motif, seq)]
@@ -166,9 +206,16 @@ def main():
 
     parameters = eval(data)
     
-    counts = pd.read_csv(args.sample_count)
-    sequences = pd.read_csv(args.sequence_data)
-    
+    counts = read_csv_or_empty(args.sample_count)
+    sequences = read_csv_or_empty(args.sequence_data)
+
+    # A locus with no assigned reads: emit empty outputs and continue rather than crash,
+    # so one failed/empty locus doesn't abort the whole run.
+    if sequences.empty or counts.empty:
+        print(f"No reads for locus {args.locus_name}; writing empty outputs and skipping.")
+        write_empty_locus(args)
+        return
+
     # format inputs
     reads = pd.melt(counts, id_vars="id", var_name="Sequence_id", value_name="Read_Count") # Convert to long format
     reads = reads.merge(sequences, left_on="Sequence_id", right_on="id").drop(columns=["id_y", "Sequence_id" ])

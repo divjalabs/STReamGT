@@ -111,7 +111,7 @@ workflow {
     MERGE_ALLELES(genotypes_list, freq_list, pos_list)
         CREATE_SUMMARY(
         params.kit_id,
-        fastq1_path,   // raw input FASTQs
+        file(fastq1_path),   // raw input FASTQs (wrap in file() so Nextflow stages it as a path)
         paired_ch,              // paired-filtered FASTQs
         demultiplex_ch.assigned_reads,      // reads that passed ngsfilter
         demultiplex_ch.ngsfilter_stats    // stats/errors from demultiplex

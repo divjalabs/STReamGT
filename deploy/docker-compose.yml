@@ -1,0 +1,101 @@
+# Local / single-VM stack. Build context is the repo root (one level up).
+# Bring up:  docker compose -f deploy/docker-compose.yml up --build
+#
+# The worker mounts the host Docker socket so Nextflow's -profile docker can launch
+# the pipeline's `stream:latest` container. Build that image first from pipeline/:
+#   docker build -t stream:latest pipeline/
+name: streamgt
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: streamgt
+      POSTGRES_PASSWORD: streamgt
+      POSTGRES_DB: streamgt
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streamgt"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Dev-only S3 (MinIO). In production point S3_* at real AWS and drop this service.
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  # Dev-only SMTP catcher.
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "8025:8025"   # web UI
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    env_file: ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "alembic upgrade head || python -m app.bootstrap;
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.worker
+    env_file: ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # drive host Docker for -profile docker
+      - scratch:/scratch
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    depends_on: [api]
+
+  caddy:
+    image: caddy:2
+    depends_on: [api, frontend]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddydata:/data
+
+volumes:
+  pgdata:
+  miniodata:
+  scratch:
+  caddydata:

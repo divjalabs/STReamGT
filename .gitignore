@@ -1,0 +1,52 @@
+# ---- Nextflow runtime ----
+work/
+.nextflow/
+.nextflow.log*
+
+# ---- Data / large binaries ----
+*.fastq
+*.fastq.gz
+DIVJA240/
+archive/
+drafts
+
+# ---- R ----
+.RData
+.Rhistory
+.Rproj.user/
+STReamGT.Rproj
+
+# ---- OS ----
+.DS_Store
+
+# ---- Secrets / env ----
+.env
+.env.*
+!.env.example
+
+# ---- Python (backend) ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ---- Node (frontend) ----
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ---- Local job scratch / test data ----
+scratch/
+runs/
+test_data/
+/input.tsv          # machine-specific absolute paths; use pipeline/tests/input.example.tsv
+
+# ---- SQLite dev databases ----
+*.db
+*.sqlite
+*.sqlite3
+
+# Note: pipeline/tests/ IS tracked (holds fixtures like input.example.tsv)

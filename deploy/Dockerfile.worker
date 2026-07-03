@@ -1,0 +1,40 @@
+# Worker image: Celery worker that runs Nextflow (-profile docker) + renders the R report.
+# Needs: Python (app), Java + Nextflow, Docker CLI (to drive the host daemon), R + pandoc.
+# This is a heavy image (R/tidyverse compile) — expect a long first build.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
+    NXF_HOME=/opt/nextflow JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+# --- System deps: Java (Nextflow), Docker CLI, R + pandoc (report rendering) ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates procps \
+        openjdk-17-jre-headless \
+        docker.io \
+        r-base pandoc \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Nextflow ---
+RUN mkdir -p /opt/nextflow \
+    && curl -s https://get.nextflow.io | bash \
+    && mv nextflow /usr/local/bin/ \
+    && chmod +x /usr/local/bin/nextflow \
+    && nextflow -version
+
+# --- R packages for Genotype_stat.Rmd ---
+RUN R -e "install.packages(c('rmarkdown','tidyverse','plotly'), repos='https://cloud.r-project.org')"
+
+WORKDIR /app
+COPY backend/pyproject.toml ./
+RUN pip install --upgrade pip && pip install .
+
+COPY backend/app ./app
+# The pipeline is baked in so the worker can run it (settings.pipeline_dir=/app/pipeline).
+COPY pipeline /app/pipeline
+
+# Job scratch (mount a real volume in compose for space).
+RUN mkdir -p /scratch
+ENV JOB_SCRATCH_ROOT=/scratch PIPELINE_DIR=/app/pipeline
+
+CMD ["celery", "-A", "app.worker.celery_app.celery_app", "worker", \
+     "--loglevel=info", "--concurrency=2"]

@@ -19,7 +19,6 @@ process CALL_ALLELES{
 
 process MERGE_ALLELES{
 
-
     publishDir params.results_dir, mode: 'copy'
 
     input:
