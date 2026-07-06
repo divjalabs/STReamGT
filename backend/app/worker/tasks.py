@@ -102,6 +102,31 @@ def _tail(path: str, n: int = 40) -> str:
 
 @celery_app.task(name="run_pipeline", bind=True)
 def run_pipeline(self, job_id: int) -> str:
+    """Celery entrypoint (run_mode='celery', local/VM). Delegates to execute_job."""
+    return execute_job(job_id)
+
+
+def _prepare_awsbatch_env() -> None:
+    """Export the values the awsbatch Nextflow profile reads (see pipeline/nextflow.config),
+    so the Nextflow subprocess picks them up whether run on a VM worker or an ECS head task."""
+    if settings.nextflow_profile != "awsbatch":
+        return
+    mapping = {
+        "NXF_BATCH_QUEUE": settings.nxf_batch_queue,
+        "OBITOOLS_IMAGE": settings.obitools_image,
+        "NXF_WORK": settings.nxf_work_dir,
+        "AWS_REGION": settings.s3_region,
+    }
+    for k, v in mapping.items():
+        if v:
+            os.environ[k] = v
+
+
+def execute_job(job_id: int) -> str:
+    """Run one genotyping job end-to-end. Called by the Celery task (local) or the ECS head
+    entrypoint `python -m app.worker.run_job <id>` (cloud). Profile-agnostic: runs
+    `nextflow -profile <settings.nextflow_profile>` — 'docker' locally, 'awsbatch' in cloud
+    (Nextflow stages the staged inputs to the S3 work-dir and farms each process to Batch)."""
     db = SessionLocal()
     job = db.get(Job, job_id)
     if job is None:
@@ -140,6 +165,7 @@ def run_pipeline(self, job_id: int) -> str:
 
         # 3. Run Nextflow (outputs land at {scratch}/{kit_code}/...).
         set_status(JobStatus.running)
+        _prepare_awsbatch_env()  # no-op unless nextflow_profile == "awsbatch"
         _run(
             pr.build_nextflow_cmd(
                 pipeline_dir=settings.pipeline_dir, input_tsv=input_tsv, run_dir=scratch,

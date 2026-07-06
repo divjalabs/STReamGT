@@ -239,17 +239,69 @@ positional tag values can't be rebuilt from the DB).
 
 ---
 
-## Rough monthly cost (starting point, eu-central-1, on-demand)
+## Cost model — pay-per-use (this is the important part)
 
-| Component | Est. |
-|---|---|
-| EC2 c6i.2xlarge (24×7) | ~$250 |
-| 200 GB gp3 EBS | ~$18 |
-| RDS db.t4g.small (optional) | ~$30 |
-| S3 (100 GB + requests) | ~$3–10 |
-| SES | ~$0 (first 62k emails free from EC2) |
-| **Total** | **~$300/mo** (much less if you stop the VM when idle or move to Batch) |
+The naïve "one big VM 24×7" plan costs ~$300/mo **even when no kit is processing** — you're
+paying for 8 idle vCPUs all month. Don't do that. The genotyping job is bursty (a few hours
+per kit, then nothing), so the design goal is: **fixed cost ≈ $0 when idle, and you pay per
+kit only while a job runs.** Two architectures achieve this; both keep the exact same pipeline
+and reuse the backend code already written.
 
-Biggest lever: if jobs are bursty, run compute on **AWS Batch/spot** and keep only a small
-always-on web VM — can cut compute cost by 50–80%.
+### Recommended (least rework): tiny always-on web + AWS Batch compute
+- **Web tier** on a small always-on instance — `t4g.small` (2 vCPU / 2 GB, ARM) running the
+  API + a lightweight worker + frontend + Redis. It never runs the heavy OBITools steps, so it
+  can be tiny. ~**$12/mo** + ~$3 EBS.
+- **Compute** via **AWS Batch on EC2/Fargate Spot**: the worker runs `nextflow -profile
+  awsbatch` (add this profile to `pipeline/nextflow.config`, `-work-dir s3://…`). Each pipeline
+  *process* becomes a short Batch job on Spot; Batch scales the compute environment **to zero**
+  between kits. You pay only for the vCPU-hours a kit actually uses. Nextflow `-resume` means a
+  Spot interruption only retries one short task, not the whole run.
+- **Storage** S3 (pay per GB, lifecycle-delete raw FASTQ after processing).
+- **DB** Postgres container on the small VM (or Aurora Serverless v2, below).
+- **Fixed ≈ $15–20/mo**, then **~$0.50–1.50 per kit** (table below).
+
+### Maximum savings (more rework): fully serverless
+- **Frontend** → S3 + CloudFront (static SPA). ~$0.50/mo.
+- **API** → Lambda + API Gateway (FastAPI via Mangum; uploads go browser→S3 so Lambda never
+  sees big bodies). Light lab traffic sits in/near the free tier. ~$0–1/mo.
+- **DB** → **Aurora Serverless v2 with scale-to-zero** (min ACU = 0): auto-pauses after idle,
+  **only storage billed while paused** (~$0.10/GB-mo), ~15 s resume. ~$1–5/mo depending on use.
+- **Worker** → drop Celery/Redis; the API calls **Batch SubmitJob**, and the existing
+  `run_pipeline` logic runs as the Batch head job (same code, packaged as a container).
+- **Compute/storage** same as above.
+- **Fixed ≈ $3–7/mo**, same per-kit cost. Saves the ~$15/mo VM at the price of a Lambda/Aurora
+  migration — worth it only if you want near-zero idle spend.
+
+### Approximate per-kit cost
+
+One kit ≈ one FASTQ pair (~2×1.4 GB, ~28 M reads), a few hours wall-clock. The compute
+footprint is dominated by `obipairing`/`obimultiplex` plus 13 short per-locus tasks — roughly
+**10–20 vCPU-hours** total.
+
+| Item (per kit) | Spot | On-demand |
+|---|---|---|
+| Compute — ~15 vCPU-hr + memory (Batch, Fargate/EC2) | ~$0.20 | ~$0.60–0.90 |
+| S3 — 2.8 GB FASTQ + intermediates, short-lived | ~$0.05 | ~$0.05 |
+| Requests + data transfer (same-region = free) + SES email | <$0.01 | <$0.01 |
+| **Per kit** | **≈ $0.25** | **≈ $0.70–1.00** |
+
+Rule of thumb: budget **~$0.50–1.50 per kit** (higher end for very deep runs or on-demand
+compute). Uploads are free (S3 ingress), so a 2 GB FASTQ costs nothing to send.
+
+### What you'd actually pay
+- **Idle month, 0 kits:** ~$15–20 (tiny-VM design) or ~$3–7 (serverless).
+- **10 kits/month:** ~$20–35 total.
+- **100 kits/month:** ~$65–170 total.
+
+Even at 100 kits/month this beats the flat $300 always-on VM, and at low volume it's ~10× cheaper.
+
+### Levers to push it lower
+- **Spot** for all Batch compute (~70% off) — the single biggest lever ([Fargate Spot](https://aws.amazon.com/fargate/pricing/)).
+- **S3 lifecycle**: delete raw `uploads/` FASTQ 1–7 days after a job succeeds (results are tiny).
+- **Aurora scale-to-zero** ([auto-pause](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-serverless-v2-auto-pause.html)) or just a Postgres container on the small VM.
+- **ARM (Graviton)** everywhere (`t4g`, ARM Batch) — cheaper than x86 for equal work.
+- **Savings Plans / Database Savings Plans** (from re:Invent 2025) only if you reach steady baseline load — not worth committing at low volume.
+
+Sources: [Fargate pricing](https://aws.amazon.com/fargate/pricing/) ·
+[Aurora Serverless v2 scale-to-zero](https://aws.amazon.com/blogs/database/introducing-scaling-to-0-capacity-with-amazon-aurora-serverless-v2/)
 ```

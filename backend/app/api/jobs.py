@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_db
 from app.models import User, Kit, Job, SampleBatch, JobStatus
 from app.auth.deps import get_current_user
@@ -29,10 +30,19 @@ MULTIPART_THRESHOLD = DEFAULT_PART_SIZE
 
 
 def enqueue_job(job_id: int) -> None:
-    """Push the job onto the Celery queue. Isolated so tests can patch it."""
-    from app.worker.tasks import run_pipeline
+    """Dispatch the job to compute. Isolated so tests can patch it.
 
-    run_pipeline.delay(job_id)
+    run_mode='ecs'    -> launch a one-off ECS Fargate head task (cloud).
+    run_mode='celery' -> enqueue to Celery/Redis for a long-running worker (local/VM).
+    """
+    if settings.run_mode == "ecs":
+        from app.services.dispatch import launch_head_task_ecs
+
+        launch_head_task_ecs(job_id)
+    else:
+        from app.worker.tasks import run_pipeline
+
+        run_pipeline.delay(job_id)
 
 
 def _safe_name(name: str) -> str:

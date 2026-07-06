@@ -46,9 +46,29 @@ class Settings(BaseSettings):
     email_from: str = "no-reply@streamgt.local"
 
     # --- Pipeline execution ---
-    pipeline_dir: str = "/app/pipeline"      # where main.nf lives inside the worker image
-    nextflow_profile: str = "docker"
+    pipeline_dir: str = "/app/pipeline"      # where main.nf lives inside the worker/head image
+    nextflow_profile: str = "docker"         # "docker" (local) | "awsbatch" (cloud)
     job_scratch_root: str = "/scratch"       # local staging dir for job workdirs
+
+    # How a submitted job is dispatched:
+    #   "celery"  -> enqueue to Celery/Redis, a long-running worker runs it (local/VM).
+    #   "ecs"     -> API launches a one-off ECS Fargate "head" task per job (cloud-native).
+    run_mode: str = "celery"
+
+    # --- ECS (run_mode="ecs"): the per-job head task ---
+    ecs_cluster: str | None = None
+    head_task_def: str | None = None         # task definition family[:revision]
+    ecs_subnets: str | None = None           # comma-separated public subnet ids
+    ecs_security_group: str | None = None    # the API/head security group id
+
+    # --- AWS Batch (nextflow_profile="awsbatch") ---
+    nxf_batch_queue: str = "streamgt-queue"
+    obitools_image: str | None = None        # ECR URI of the OBITools image
+    nxf_work_dir: str | None = None          # s3://<bucket>/work for Nextflow's Batch work-dir
+
+    @property
+    def ecs_subnet_list(self) -> list[str]:
+        return [s.strip() for s in (self.ecs_subnets or "").split(",") if s.strip()]
 
     @property
     def broker_url(self) -> str:
