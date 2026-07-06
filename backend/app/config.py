@@ -22,7 +22,24 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
 
     # --- Database ---
+    # Either set database_url directly (local/dev), or provide db_host + db_password
+    # (cloud: password injected from Secrets Manager, host from Aurora) and let
+    # resolved_database_url assemble the URL — keeps the password out of IaC state/env files.
     database_url: str = "postgresql+psycopg://streamgt:streamgt@localhost:5432/streamgt"
+    db_host: str | None = None
+    db_port: int = 5432
+    db_user: str = "streamgt"
+    db_password: str | None = None
+    db_name: str = "streamgt"
+
+    @property
+    def resolved_database_url(self) -> str:
+        if self.db_host:
+            return (
+                f"postgresql+psycopg://{self.db_user}:{self.db_password}"
+                f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            )
+        return self.database_url
 
     # --- Redis / Celery ---
     redis_url: str = "redis://localhost:6379/0"

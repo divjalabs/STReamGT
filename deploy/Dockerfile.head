@@ -1,0 +1,35 @@
+# Lean image for BOTH the ECS API service and the per-job ECS "head" task.
+# The head runs `nextflow -profile awsbatch`, which talks to AWS Batch + S3 via Nextflow's
+# Java nf-amazon plugin (no aws CLI needed here — that lives in the OBITools job image).
+# Deliberately NO R: report rendering is best-effort and skipped in cloud for now, so this
+# image builds fast even under amd64 emulation. (Add R later to enable the HTML report.)
+FROM python:3.12-slim
+
+# Pin Nextflow to the version the pipeline targets. 26.x has a stricter DSL2 parser that
+# rejects main.nf's top-level statements ("Statements cannot be mixed with script
+# declarations"). The launcher's version-pin variable is NXF_VER (NOT NXF_VERSION).
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
+    JOB_SCRATCH_ROOT=/scratch PIPELINE_DIR=/app/pipeline \
+    NXF_VER=25.10.4
+
+# default-jre-headless = whatever JRE the base image ships (21+ on Debian trixie); Nextflow
+# needs Java 17+, so 21 is fine. Nextflow finds `java` on PATH (no JAVA_HOME needed).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates procps default-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# Nextflow (auto-downloads the nf-amazon plugin at runtime for awsbatch + S3).
+RUN curl -s https://get.nextflow.io | bash \
+    && mv nextflow /usr/local/bin/ && chmod +x /usr/local/bin/nextflow \
+    && nextflow -version
+
+WORKDIR /app
+COPY backend/pyproject.toml ./
+RUN pip install --upgrade pip && pip install .
+
+COPY backend/app ./app
+COPY pipeline /app/pipeline
+RUN mkdir -p /scratch
+
+# API overrides this with uvicorn; the head task runs run_job (JOB_ID appended by RunTask).
+CMD ["python", "-m", "app.worker.run_job"]
