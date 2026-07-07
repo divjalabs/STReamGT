@@ -2,7 +2,7 @@
 name = "streamgt-backend"
 version = "0.1.0"
 description = "STReamGT web platform backend (FastAPI + Celery)"
-requires-python = ">=3.11"
+requires-python = ">=3.10"  # head image is built on the OBITools base (Ubuntu 22.04 / py3.10)
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",

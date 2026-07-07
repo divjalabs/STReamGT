@@ -16,8 +16,17 @@ from botocore.config import Config
 
 from app.config import settings
 
-# 100 MiB parts -> ~20 parts for a 2GB file, well under S3's 10k-part limit.
-DEFAULT_PART_SIZE = 100 * 1024 * 1024
+# 16 MiB minimum part: small enough that a stalled part is cheap to retry. For very large
+# files the part size scales up (see choose_part_size) so the count stays bounded.
+DEFAULT_PART_SIZE = 16 * 1024 * 1024
+_MIB = 1024 * 1024
+
+
+def choose_part_size(size: int, target_parts: int = 500) -> int:
+    """Pick a part size: at least 16 MiB, but grow it for huge files so we stay ~<=500 parts
+    (S3 hard-caps at 10k). e.g. 2 GB -> 16 MiB (128 parts); 50 GB -> ~100 MiB (500 parts)."""
+    want = max(DEFAULT_PART_SIZE, -(-size // target_parts))  # ceil(size/target)
+    return -(-want // _MIB) * _MIB  # round up to a whole MiB
 
 
 @lru_cache
@@ -41,10 +50,14 @@ class MultipartUpload:
 
 
 def presign_put(key: str, content_type: str = "application/octet-stream") -> str:
-    """Single-shot presigned PUT for small files (e.g. a sample .xlsx)."""
+    """Single-shot presigned PUT for small files (e.g. a sample .xlsx).
+
+    Content-Type is intentionally NOT signed: the browser sets its own Content-Type from the
+    file (e.g. application/gzip), and signing a fixed one here would cause a signature mismatch.
+    """
     return _client().generate_presigned_url(
         "put_object",
-        Params={"Bucket": settings.s3_bucket, "Key": key, "ContentType": content_type},
+        Params={"Bucket": settings.s3_bucket, "Key": key},
         ExpiresIn=settings.presign_expire_seconds,
     )
 
@@ -59,8 +72,10 @@ def presign_get(key: str, filename: str | None = None) -> str:
     )
 
 
-def start_multipart(key: str, size: int, part_size: int = DEFAULT_PART_SIZE) -> MultipartUpload:
+def start_multipart(key: str, size: int, part_size: int | None = None) -> MultipartUpload:
     """Initiate a multipart upload and presign one PUT URL per part."""
+    if part_size is None:
+        part_size = choose_part_size(size)
     c = _client()
     resp = c.create_multipart_upload(Bucket=settings.s3_bucket, Key=key)
     upload_id = resp["UploadId"]

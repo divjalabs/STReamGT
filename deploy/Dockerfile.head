@@ -1,35 +1,40 @@
-# Lean image for BOTH the ECS API service and the per-job ECS "head" task.
-# The head runs `nextflow -profile awsbatch`, which talks to AWS Batch + S3 via Nextflow's
-# Java nf-amazon plugin (no aws CLI needed here — that lives in the OBITools job image).
-# Deliberately NO R: report rendering is best-effort and skipped in cloud for now, so this
-# image builds fast even under amd64 emulation. (Add R later to enable the HTML report.)
-FROM python:3.12-slim
+# Head/API image (Option 1: run the WHOLE pipeline inside one Fargate task).
+# Built ON the OBITools image so obipairing/obimultiplex/obiuniq/... + the bin scripts +
+# parameters.json (at /usr/local/bin) + pandas/openpyxl (in /opt/venv) are all present.
+# Nextflow runs with the LOCAL executor (no container, no Batch, no docker-in-docker):
+# each process shells out to those binaries on PATH inside this task.
+#
+# Pass the OBITools ECR image at build time:
+#   docker buildx build --platform linux/amd64 -f deploy/Dockerfile.head \
+#     --build-arg OBITOOLS_IMAGE=<acct>.dkr.ecr.<region>.amazonaws.com/streamgt-obitools:latest \
+#     -t <acct>.dkr.ecr.<region>.amazonaws.com/streamgt-backend:latest --push .
+ARG OBITOOLS_IMAGE=streamgt-obitools:latest
+FROM ${OBITOOLS_IMAGE}
 
-# Pin Nextflow to the version the pipeline targets. 26.x has a stricter DSL2 parser that
-# rejects main.nf's top-level statements ("Statements cannot be mixed with script
-# declarations"). The launcher's version-pin variable is NXF_VER (NOT NXF_VERSION).
+# Pin Nextflow to the version the pipeline targets (26.x's stricter DSL2 parser rejects
+# main.nf's top-level statements). The launcher's pin variable is NXF_VER.
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     JOB_SCRATCH_ROOT=/scratch PIPELINE_DIR=/app/pipeline \
     NXF_VER=25.10.4
 
-# default-jre-headless = whatever JRE the base image ships (21+ on Debian trixie); Nextflow
-# needs Java 17+, so 21 is fine. Nextflow finds `java` on PATH (no JAVA_HOME needed).
+# Java (Nextflow) + curl. Base is Ubuntu 22.04, which has openjdk-17.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates procps default-jre-headless \
+        openjdk-17-jre-headless curl procps ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Nextflow (auto-downloads the nf-amazon plugin at runtime for awsbatch + S3).
+# Nextflow (auto-fetches the exact NXF_VER build).
 RUN curl -s https://get.nextflow.io | bash \
     && mv nextflow /usr/local/bin/ && chmod +x /usr/local/bin/nextflow \
     && nextflow -version
 
+# Backend into the OBITools venv (already has pandas/openpyxl on PATH via /opt/venv/bin).
 WORKDIR /app
 COPY backend/pyproject.toml ./
-RUN pip install --upgrade pip && pip install .
+RUN /opt/venv/bin/pip install --upgrade pip && /opt/venv/bin/pip install .
 
 COPY backend/app ./app
 COPY pipeline /app/pipeline
 RUN mkdir -p /scratch
 
-# API overrides this with uvicorn; the head task runs run_job (JOB_ID appended by RunTask).
+# API overrides with uvicorn; the head task runs run_job (JOB_ID appended by RunTask).
 CMD ["python", "-m", "app.worker.run_job"]

@@ -198,7 +198,7 @@ def execute_job(job_id: int) -> str:
                     cwd=scratch, log_path=log_path,
                 )
                 rendered = os.path.exists(report_html)
-            except RuntimeError:
+            except Exception:  # noqa: BLE001 — report is best-effort (e.g. no Rscript in the image)
                 rendered = False  # keep results even if the report fails
 
         # 5. Upload results to S3 and record them.
