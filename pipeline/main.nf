@@ -102,9 +102,9 @@ workflow {
 
     loci_ch = PROCESS_LOCI(loci_reads_ch)
     call_alleles_ch = CALL_ALLELES(loci_ch, ngsfilter)
-    genotypes_ch = call_alleles_ch.map { gen, freq, pos -> gen }
-    freq_ch      = call_alleles_ch.map { gen, freq, pos -> freq }
-    pos_ch       = call_alleles_ch.map { gen, freq, pos -> pos }
+    genotypes_ch = call_alleles_ch.alleles.map { gen, freq, pos -> gen }
+    freq_ch      = call_alleles_ch.alleles.map { gen, freq, pos -> freq }
+    pos_ch       = call_alleles_ch.alleles.map { gen, freq, pos -> pos }
 
     genotypes_list = genotypes_ch.collect()
     freq_list      = freq_ch.collect()

@@ -2,9 +2,50 @@
 # for testing only#!/Users/elena/miniconda3/envs/ngs_pipelines/bin/python
 
 import argparse
+import json
+import logging
+import sys
 import pandas as pd
 import os
 import re
+
+# Parameter keys the caller relies on; validated up front so a missing key fails
+# with a clear message instead of a KeyError deep inside allele calling.
+REQUIRED_PARAMETERS = [
+    "discard_threshold", "negative_name",
+    "str_stutter_read_proportion", "str_disbalanced_allele_read_proportion",
+    "str_low_allele_flag_threshold",
+    "snp_low_allele_flag_threshold", "snp_junk_proportion",
+    "snp_disbalanced_allele_read_proportion", "snp_divergence_if_not_low",
+]
+
+log = logging.getLogger("callAlleleUL")
+
+
+def setup_logging(log_path):
+    """Log to a durable per-locus file AND stderr, so messages survive in the published
+    logs and are also captured by Nextflow / the job log. (Explicit config so it works on
+    the image's Python 3.10 and older 3.7 alike — no basicConfig(force=...).)"""
+    for h in list(log.handlers):
+        log.removeHandler(h)
+    log.setLevel(logging.INFO)
+    log.propagate = False  # keep third-party root INFO (e.g. NumExpr) out of the file
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    for handler in (logging.FileHandler(log_path, mode="w"), logging.StreamHandler(sys.stderr)):
+        handler.setFormatter(fmt)
+        log.addHandler(handler)
+
+
+def _die(locus, message):
+    """Log a clear, locus-tagged error and abort (non-zero exit)."""
+    log.error("locus '%s': %s", locus, message)
+    sys.exit(1)
+
+
+def _as_bool(value):
+    """Coerce a CLI flag to bool. argparse passes strings, so '--flag False' must be False,
+    not a truthy non-empty string."""
+    return str(value).strip().lower() in ("1", "true", "yes", "y", "t")
 
 
 # Output column layouts (kept in one place so an empty-locus file matches a populated one).
@@ -103,8 +144,13 @@ def parse_reference_snp(ref_string):
     refs = []
 
     for item in ref_string.split("/"):
-        name, seq = item.split(":")
-        seq = seq.strip()
+        if ":" not in item:
+            raise ValueError(
+                f"expected 'name:sequence' pairs separated by '/', got {ref_string!r}")
+        name, seq = item.split(":", 1)
+        name, seq = name.strip(), seq.strip()
+        if not name or not seq:
+            raise ValueError(f"empty name or sequence in reference {item!r}")
         refs.append((name, seq, len(seq))) # save to tuple
 
     return refs
@@ -186,35 +232,79 @@ def call_snp_alleles_vectorized(alleles, parameters, max_reads, ref_length):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--kit_id")
-    parser.add_argument("--sample_count")
-    parser.add_argument("--sequence_data")
-    parser.add_argument("--locus_name")
-    parser.add_argument("--locus_type")
-    parser.add_argument("--locus_sequence")
+    parser.add_argument("--kit_id", required=True)
+    parser.add_argument("--sample_count", required=True)
+    parser.add_argument("--sequence_data", required=True)
+    parser.add_argument("--locus_name", required=True)
+    parser.add_argument("--locus_type", required=True)
+    parser.add_argument("--locus_sequence", required=True)
     parser.add_argument("--progressive_threshold", default=True)
     parser.add_argument("--alleles_only", default=True)
     parser.add_argument("--parameters_file_path", default="/usr/local/bin/parameters.json")
-    parser.add_argument("--ngsfilter_path")
-    
+    parser.add_argument("--ngsfilter_path", required=True)
+
 
     args = parser.parse_args()
+    locus = args.locus_name
+    setup_logging(f"{args.kit_id}_{locus}.log")
+    log.info("Processing locus %s (%s) for kit %s", locus, args.locus_type, args.kit_id)
 
-    with open(args.parameters_file_path, "r") as f:
-        data = f.read()
-        f.close()
+    # --- validate inputs up front, with clear messages (fail fast, not deep in pandas) ---
+    for label, path in [("--sample_count", args.sample_count),
+                        ("--sequence_data", args.sequence_data),
+                        ("--ngsfilter_path", args.ngsfilter_path),
+                        ("--parameters_file_path", args.parameters_file_path)]:
+        if not os.path.isfile(path):
+            _die(locus, f"{label} file not found: {path}")
 
-    parameters = eval(data)
-    
+    # ngsfilter must carry the columns both this path and write_empty_locus rely on.
+    try:
+        ngsfilter_cols = pd.read_csv(args.ngsfilter_path, nrows=0).columns
+    except Exception as e:  # noqa: BLE001 — any parse failure is a bad ngsfilter
+        _die(locus, f"could not read --ngsfilter_path {args.ngsfilter_path}: {e}")
+    for col in ("sample", "sample_tag"):
+        if col not in ngsfilter_cols:
+            _die(locus, f"--ngsfilter_path has no '{col}' column (columns: {list(ngsfilter_cols)})")
+
+    if args.locus_type not in ("microsat", "snp"):
+        _die(locus, f"--locus_type must be 'microsat' or 'snp', got {args.locus_type!r}")
+    if not str(args.locus_sequence).strip():
+        _die(locus, "--locus_sequence is empty (motif for microsat, references for snp)")
+    if args.locus_type == "snp":
+        try:
+            if not parse_reference_snp(args.locus_sequence):
+                _die(locus, "--locus_sequence has no snp references")
+        except ValueError as e:
+            _die(locus, f"invalid snp --locus_sequence: {e}")
+
+    progressive_threshold = _as_bool(args.progressive_threshold)
+    alleles_only = _as_bool(args.alleles_only)
+
+    try:
+        with open(args.parameters_file_path) as f:
+            parameters = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        _die(locus, f"could not read parameters JSON {args.parameters_file_path}: {e}")
+    missing = [k for k in REQUIRED_PARAMETERS if k not in parameters]
+    if missing:
+        _die(locus, f"parameters file is missing keys: {missing}")
+
     counts = read_csv_or_empty(args.sample_count)
     sequences = read_csv_or_empty(args.sequence_data)
 
     # A locus with no assigned reads: emit empty outputs and continue rather than crash,
     # so one failed/empty locus doesn't abort the whole run.
     if sequences.empty or counts.empty:
-        print(f"No reads for locus {args.locus_name}; writing empty outputs and skipping.")
+        log.info("No reads for locus %s; writing empty outputs and skipping.", locus)
         write_empty_locus(args)
         return
+
+    # Non-empty files must have the expected schema, or the melt/merge below fails cryptically.
+    if "id" not in counts.columns:
+        _die(locus, f"--sample_count has no 'id' column (columns: {list(counts.columns)})")
+    for col in ("id", "sequence"):
+        if col not in sequences.columns:
+            _die(locus, f"--sequence_data has no '{col}' column (columns: {list(sequences.columns)})")
 
     # format inputs
     reads = pd.melt(counts, id_vars="id", var_name="Sequence_id", value_name="Read_Count") # Convert to long format
@@ -223,7 +313,7 @@ def main():
     reads["length"] = reads["sequence"].apply(len)
     #filter reads and set up thresholds
     reads = reads[reads["Read_Count"] > parameters["discard_threshold"]]
-    if args.progressive_threshold:
+    if progressive_threshold:
         if len(reads[reads["Sample_Name"].str.contains(parameters["negative_name"])]["Read_Count"]) != 0:
             # L = 1.5 * int(max(gen[gen["Sample_Name"].str.contains("^B[0-9]{2}")]["Read_Count"])) #maximum number of reads in one allele in Blanks named B01, B02 etc
             parameters["discard_threshold"] = 1.5 * int(max(reads[reads["Sample_Name"].str.contains(parameters["negative_name"])]["Read_Count"]))    # Mark as Low count alleles, that have 1.5 * number of reads in max Blank
@@ -263,15 +353,21 @@ def main():
             alleles["min_score"] = alleles["sequence"].map(lambda s: scores[s][1])
             alleles = call_snp_alleles_vectorized(alleles,parameters,max_reads,ref_length) # we can easily add X or Y identification
         else:
-            print(f"Unknown locus type: {args.locus_type}. Must be either 'microsat' or 'snp'")
-            exit()
+            _die(locus, f"unknown locus type: {args.locus_type}")
         genotypes.append(alleles)
+
+    # Everything may have been filtered out (e.g. by a progressive threshold): emit empty outputs
+    # rather than crashing on pd.concat([]).
+    if not genotypes:
+        log.info("No alleles remained for locus %s after filtering; writing empty outputs.", locus)
+        write_empty_locus(args)
+        return
 
     all_geno = pd.concat(genotypes)
     # If clean == TRUE, return only sequences which were tagged as allele or stutter
-    if args.alleles_only:
+    if alleles_only:
         all_geno = all_geno[all_geno["stutter"] | all_geno["called"]]
-    # format for the database
+    # format for the database (ngsfilter columns were validated up front)
     ngsfilter = pd.read_csv(args.ngsfilter_path)
     ngsfilter = ngsfilter[["sample","sample_tag"]]
     ngsfilter = ngsfilter.rename(columns={"sample_tag":"TagCombo"})
@@ -304,6 +400,8 @@ def main():
     positions["Marker"],positions["Run_Name"] = args.locus_name, args.kit_id
     positions = positions[["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position", "TagCombo"]]
     positions.to_csv(f"{args.kit_id}_{args.locus_name}_positions.txt", sep="\t", index=False)
+    log.info("Done: wrote genotypes/frequency/positions for locus %s (%d called rows)", locus, len(all_geno))
+
 
 if __name__ == "__main__":
     main()

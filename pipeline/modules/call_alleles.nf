@@ -1,14 +1,14 @@
 process CALL_ALLELES{
-    
+
+    publishDir "${params.reports_dir}/logs", mode: 'copy', pattern: "*.log"
+
     input:
     tuple val(locus_name), val(locus_type), val(locus_sequence), path(locus_csv), path(counts_csv)
     path ngsfilter_file
 
     output:
-    tuple(
-    path("${params.kit_id}_${locus_name}_genotypes.txt"),
-    path("${params.kit_id}_${locus_name}_frequency_of_sequences_by_marker.txt"),
-    path("${params.kit_id}_${locus_name}_positions.txt"))
+    tuple path("${params.kit_id}_${locus_name}_genotypes.txt"), path("${params.kit_id}_${locus_name}_frequency_of_sequences_by_marker.txt"), path("${params.kit_id}_${locus_name}_positions.txt"), emit: alleles
+    path "${params.kit_id}_${locus_name}.log", emit: log
 
     script:
     """
@@ -49,7 +49,8 @@ process MERGE_ALLELES{
 
 process CONSENSUS {
 
-    publishDir params.results_dir, mode: 'copy'
+    publishDir params.results_dir, mode: 'copy', pattern: "*.txt"
+    publishDir "${params.reports_dir}/logs", mode: 'copy', pattern: "*.log"
 
     input:
     path genotypes_file
@@ -59,6 +60,7 @@ process CONSENSUS {
     output:
     path("${params.kit_id}_consensus_genotypes.txt")
     path("${params.kit_id}_reference_alleles.txt")
+    path("${params.kit_id}_consensus.log")
 
     script:
     """

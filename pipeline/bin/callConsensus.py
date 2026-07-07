@@ -11,9 +11,26 @@ naming + replicate counting, no deprecated DataFrame.append, divide-by-zero guar
 """
 import argparse
 import json
+import logging
+import sys
 from collections import Counter
 
 import pandas as pd
+
+log = logging.getLogger("callConsensus")
+
+
+def setup_logging(log_path):
+    """Log to a durable file AND stderr (published in the pipeline logs + captured by the job log).
+    Explicit handler config so it works on Python 3.10 (image) and 3.7 alike."""
+    for h in list(log.handlers):
+        log.removeHandler(h)
+    log.setLevel(logging.INFO)
+    log.propagate = False  # keep third-party root INFO (e.g. NumExpr) out of the file
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    for handler in (logging.FileHandler(log_path, mode="w"), logging.StreamHandler(sys.stderr)):
+        handler.setFormatter(fmt)
+        log.addHandler(handler)
 
 # Output column layout (kept identical to the original for downstream / R compatibility).
 CONSENSUS_COLUMNS = [
@@ -125,6 +142,8 @@ def main():
     parser.add_argument("--parameters_file_path", default="/usr/local/bin/parameters.json")
     parser.add_argument("--reference_alleles", default="", help="optional existing allele names")
     args = parser.parse_args()
+    setup_logging(f"{args.kit_id}_consensus.log")
+    log.info("Building consensus for kit %s", args.kit_id)
 
     with open(args.parameters_file_path) as f:
         parameters = json.load(f)
@@ -142,7 +161,7 @@ def main():
     if genotypes.empty or frequency.empty:
         pd.DataFrame(columns=REFERENCE_COLUMNS).to_csv(reference_out, sep="\t", index=False)
         pd.DataFrame(columns=CONSENSUS_COLUMNS).to_csv(consensus_out, sep="\t", index=False)
-        print("No genotypes/frequency; wrote empty consensus + reference outputs.")
+        log.info("No genotypes/frequency; wrote empty consensus + reference outputs.")
         return
 
     reference = build_reference_alleles(frequency, args.reference_alleles)
@@ -161,7 +180,7 @@ def main():
         for (sample, marker), group in called.groupby(["Sample_Name", "Marker"])
     ]
     pd.DataFrame(rows, columns=CONSENSUS_COLUMNS).to_csv(consensus_out, sep="\t", index=False)
-    print(f"Wrote {len(rows)} consensus rows to {consensus_out}")
+    log.info("Wrote %d consensus rows to %s", len(rows), consensus_out)
 
 
 if __name__ == "__main__":
