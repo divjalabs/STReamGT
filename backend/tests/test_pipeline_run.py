@@ -56,6 +56,17 @@ def test_collect_results_empty_when_missing(tmp_path):
     assert pr.collect_results(str(tmp_path), "NOPE") == []
 
 
+def test_count_fastq_reads(tmp_path):
+    import gzip
+    p = tmp_path / "reads_1.fastq.gz"
+    with gzip.open(p, "wt") as fh:
+        for i in range(5):
+            fh.write(f"@r{i}\nACGT\n+\nIIII\n")
+    assert pr.count_fastq_reads(str(p)) == 5
+    assert pr.count_fastq_reads(str(p), stop_at=3) == 3      # early-stop reports "at least 3"
+    assert pr.count_fastq_reads(str(p), stop_at=100) == 5    # fewer than asked -> true count
+
+
 def test_samples_text_to_rows_variants():
     rows = pr.samples_text_to_rows("TPositionId,SPositionBC\nA1,SAMP1\nB2,SAMP2\n")
     assert rows == [{"TPositionId": "A1", "SPositionBC": "SAMP1"},

@@ -5,11 +5,37 @@ Kept free of DB/S3/Celery so they can be unit-tested without infrastructure.
 from __future__ import annotations
 
 import csv
+import gzip
 import io
 import os
 from dataclasses import dataclass
 
 from app.models.enums import ResultKind
+
+
+def count_fastq_reads(path: str, stop_at: int | None = None) -> int:
+    """Count reads (4 lines each) in a (optionally gzipped) FASTQ.
+
+    If ``stop_at`` is given, stop once that many reads are reached and return it — a cheap way to
+    answer "are there at least N reads?" without decompressing a whole 2 GB file when it's fine.
+    """
+    limit = None if stop_at is None else stop_at * 4
+
+    def _count_lines(fh) -> int:
+        n = 0
+        for _ in fh:
+            n += 1
+            if limit is not None and n >= limit:
+                break
+        return n
+
+    try:
+        with gzip.open(path, "rt") as fh:
+            lines = _count_lines(fh)
+    except gzip.BadGzipFile:  # tolerate a plain (uncompressed) FASTQ
+        with open(path, "rt") as fh:
+            lines = _count_lines(fh)
+    return lines // 4
 
 # Map published pipeline output filenames (suffixes) to a ResultKind.
 _RESULT_SUFFIXES = {

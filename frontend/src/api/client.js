@@ -75,6 +75,8 @@ export const api = {
   createJob: (payload) => request("/jobs", { method: "POST", body: payload }),
   listJobs: () => request("/jobs"),
   getJob: (publicId) => request(`/jobs/${publicId}`),
+  confirmJob: (publicId, proceed) =>
+    request(`/jobs/${publicId}/confirm`, { method: "POST", body: { proceed } }),
   getResults: (publicId) => request(`/jobs/${publicId}/results`),
 
   // uploads

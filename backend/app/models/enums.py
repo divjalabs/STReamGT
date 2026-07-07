@@ -12,6 +12,7 @@ class UserRole(str, enum.Enum):
 class JobStatus(str, enum.Enum):
     queued = "queued"
     staging = "staging"       # downloading inputs from S3, building input.tsv
+    awaiting_confirmation = "awaiting_confirmation"  # FASTQ has < expected reads; paused for the user
     running = "running"       # nextflow run in progress
     rendering = "rendering"   # rendering the R report
     uploading = "uploading"   # pushing results to S3

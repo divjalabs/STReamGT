@@ -9,6 +9,18 @@ export default function JobDetail() {
   const [job, setJob] = useState(null);
   const [results, setResults] = useState([]);
   const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const confirm = async (proceed) => {
+    setBusy(true);
+    try {
+      setJob(await api.confirmJob(publicId, proceed));
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     let timer;
@@ -38,7 +50,17 @@ export default function JobDetail() {
       <h1>Analysis {job.public_id.slice(0, 8)}</h1>
       <p className="muted">Kit #{job.kit_id} · submitted {new Date(job.created_at).toLocaleString()}</p>
 
-      {job.status === "failed" ? (
+      {job.status === "awaiting_confirmation" ? (
+        <div className="card error-card">
+          <b>⚠️ Low read count — confirmation needed</b>
+          <p>
+            The FASTQ has <b>{job.observed_read_count?.toLocaleString()}</b> reads, below the
+            expected <b>{job.expected_read_number?.toLocaleString()}</b>. Run the pipeline anyway?
+          </p>
+          <button disabled={busy} onClick={() => confirm(true)}>Run anyway</button>{" "}
+          <button className="secondary" disabled={busy} onClick={() => confirm(false)}>Cancel</button>
+        </div>
+      ) : job.status === "failed" ? (
         <div className="card error-card">
           <b>Failed</b>
           <pre>{job.error_message}</pre>

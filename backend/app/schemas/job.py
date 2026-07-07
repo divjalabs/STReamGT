@@ -91,12 +91,19 @@ class JobOut(BaseModel):
     min_identity: float
     min_overlap: int
     expected_read_number: int | None
+    observed_read_count: int | None
+    reads_confirmed: bool
     error_message: str | None
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
     batches: list[SampleBatchOut]
     result_files: list[ResultFileOut]
+
+
+class JobConfirm(BaseModel):
+    """Answer to an awaiting_confirmation job: run it anyway, or cancel."""
+    proceed: bool = True
 
 
 class JobSummary(BaseModel):

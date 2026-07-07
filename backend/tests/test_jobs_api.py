@@ -91,6 +91,44 @@ def test_ownership_isolation(client, catalog, admin_token, user_token):
     assert client.get("/api/jobs", headers=bearer(other)).json() == []
 
 
+def _pause_job(pub, observed=500):
+    """Simulate the worker pausing a job for low reads."""
+    from app.db import SessionLocal
+    from app.models import Job, JobStatus
+    with SessionLocal() as db:
+        j = db.query(Job).filter_by(public_id=pub).first()
+        j.status = JobStatus.awaiting_confirmation
+        j.observed_read_count = observed
+        db.commit()
+
+
+def test_confirm_runs_low_read_job(client, catalog, admin_token, user_token, no_enqueue):
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    pub = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).json()["public_id"]
+    _pause_job(pub)
+    no_enqueue.clear()
+    r = client.post(f"/api/jobs/{pub}/confirm", json={"proceed": True}, headers=bearer(user_token))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "queued" and body["reads_confirmed"] is True
+    assert len(no_enqueue) == 1  # re-dispatched
+
+
+def test_confirm_cancel_low_read_job(client, catalog, admin_token, user_token):
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    pub = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).json()["public_id"]
+    _pause_job(pub)
+    r = client.post(f"/api/jobs/{pub}/confirm", json={"proceed": False}, headers=bearer(user_token))
+    assert r.status_code == 200 and r.json()["status"] == "failed"
+
+
+def test_confirm_only_when_awaiting(client, catalog, admin_token, user_token):
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    pub = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).json()["public_id"]
+    # still queued -> confirming is a 409
+    assert client.post(f"/api/jobs/{pub}/confirm", json={"proceed": True}, headers=bearer(user_token)).status_code == 409
+
+
 def test_init_upload_small_uses_put(client, user_token):
     r = client.post(
         "/api/jobs/uploads",

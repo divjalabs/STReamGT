@@ -48,6 +48,8 @@ class Job(Base):
     min_identity: Mapped[float] = mapped_column(Float, default=0.9, nullable=False)
     min_overlap: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
     expected_read_number: Mapped[int | None] = mapped_column(BigInteger)
+    observed_read_count: Mapped[int | None] = mapped_column(BigInteger)  # counted at pre-flight
+    reads_confirmed: Mapped[bool] = mapped_column(default=False, nullable=False)  # user OK'd low reads
 
     # Execution bookkeeping.
     storage_prefix: Mapped[str | None] = mapped_column(String(512))  # s3 prefix for results

@@ -151,6 +151,22 @@ def execute_job(job_id: int) -> str:
         fq2 = os.path.join(inputs_dir, "reads_2.fastq.gz")
         _stage_ref(job.fastq1_ref, job.fastq_source, fq1)
         _stage_ref(job.fastq2_ref, job.fastq_source, fq2)
+
+        # Pre-flight: if the FASTQ has fewer reads than expected, pause for the user to confirm
+        # rather than burning a full pipeline run. Runs before Nextflow ever starts.
+        if job.expected_read_number and not job.reads_confirmed:
+            observed = pr.count_fastq_reads(fq1, stop_at=job.expected_read_number)
+            if observed < job.expected_read_number:
+                set_status(
+                    JobStatus.awaiting_confirmation,
+                    observed_read_count=observed,
+                    error_message=(f"FASTQ has {observed} reads, below the expected "
+                                   f"{job.expected_read_number}. Awaiting confirmation to run."),
+                )
+                _safe_notify(notify.send_job_needs_confirmation, job.user.email,
+                             kit.kit_code, job.public_id, observed, job.expected_read_number)
+                return "awaiting_confirmation"
+
         primers_csv, tags_csv = _stage_kit_csvs(kit, inputs_dir)
         batch_rows = _stage_batches(job, inputs_dir)
 

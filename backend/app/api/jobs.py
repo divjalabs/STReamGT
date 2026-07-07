@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -18,6 +19,7 @@ from app.schemas.job import (
     UploadInitResponse,
     MultipartCompleteRequest,
     JobCreate,
+    JobConfirm,
     JobOut,
     JobSummary,
     ResultDownload,
@@ -158,6 +160,30 @@ def _get_owned_job(public_id: str, db: Session, current: User) -> Job:
 @router.get("/{public_id}", response_model=JobOut)
 def get_job(public_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     return _get_owned_job(public_id, db, current)
+
+
+@router.post("/{public_id}/confirm", response_model=JobOut)
+def confirm_job(
+    public_id: str, payload: JobConfirm,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    """Answer a job paused for low reads: run it anyway (bypassing the check) or cancel it."""
+    job = _get_owned_job(public_id, db, current)
+    if job.status != JobStatus.awaiting_confirmation:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Job is not awaiting confirmation")
+    if payload.proceed:
+        job.reads_confirmed = True
+        job.status = JobStatus.queued
+        job.error_message = None
+        db.commit()
+        enqueue_job(job.id)
+    else:
+        job.status = JobStatus.failed
+        job.error_message = "Cancelled by user: insufficient reads."
+        job.finished_at = datetime.now(timezone.utc)
+        db.commit()
+    db.refresh(job)
+    return job
 
 
 @router.get("/{public_id}/results", response_model=list[ResultDownload])

@@ -41,6 +41,22 @@ def send_job_succeeded(to: str, kit_code: str, public_id: str) -> None:
     _send(to, subject, html, text)
 
 
+def send_job_needs_confirmation(to: str, kit_code: str, public_id: str, observed: int, expected: int) -> None:
+    url = _job_url(public_id)
+    subject = f"[{settings.app_name}] Job {kit_code} paused: low read count"
+    text = (
+        f"Your genotyping job for kit {kit_code} was paused before running.\n"
+        f"The FASTQ has {observed:,} reads, below the expected {expected:,}.\n\n"
+        f"Confirm whether to run it anyway: {url}\n"
+    )
+    html = (
+        f"<p>Your genotyping job for kit <b>{kit_code}</b> was paused before running.</p>"
+        f"<p>The FASTQ has <b>{observed:,}</b> reads, below the expected <b>{expected:,}</b>.</p>"
+        f'<p><a href="{url}">Confirm whether to run it anyway</a></p>'
+    )
+    _send(to, subject, html, text)
+
+
 def send_new_user_registered(admin_emails: list[str], new_email: str, organisation: str | None) -> None:
     """Notify admins that a new client account was created."""
     if not admin_emails:
