@@ -46,6 +46,7 @@ include { DEMULTIPLEX_READS } from './modules/demultiplex_reads'
 include { PROCESS_LOCI } from './modules/process_loci'
 include { CALL_ALLELES } from './modules/call_alleles'
 include { MERGE_ALLELES } from './modules/call_alleles'
+include { CONSENSUS } from './modules/call_alleles'
 include { CREATE_SUMMARY } from './modules/create_summary'
 
 // Load sample sheet
@@ -108,7 +109,10 @@ workflow {
     genotypes_list = genotypes_ch.collect()
     freq_list      = freq_ch.collect()
     pos_list       = pos_ch.collect()
-    MERGE_ALLELES(genotypes_list, freq_list, pos_list)
+    merged = MERGE_ALLELES(genotypes_list, freq_list, pos_list)
+
+    // Project-level consensus across replicates (additional output).
+    CONSENSUS(merged.genotypes, merged.frequency, merged.positions)
         CREATE_SUMMARY(
         params.kit_id,
         file(fastq1_path),   // raw input FASTQs (wrap in file() so Nextflow stages it as a path)

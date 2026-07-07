@@ -13,6 +13,7 @@ from app.models.enums import ResultKind
 
 # Map published pipeline output filenames (suffixes) to a ResultKind.
 _RESULT_SUFFIXES = {
+    "_consensus_genotypes.txt": ResultKind.consensus,  # must win over "_genotypes.txt"
     "_genotypes.txt": ResultKind.genotypes,
     "_positions.txt": ResultKind.positions,
     "_frequency_of_sequences_by_marker.txt": ResultKind.frequency,
@@ -73,7 +74,8 @@ def collect_results(outdir: str, kit_id: str) -> list[CollectedResult]:
         if not os.path.isdir(d):
             continue
         for name in sorted(os.listdir(d)):
-            for suffix, kind in _RESULT_SUFFIXES.items():
+            # Longest suffix first so "_consensus_genotypes.txt" beats "_genotypes.txt".
+            for suffix, kind in sorted(_RESULT_SUFFIXES.items(), key=lambda kv: -len(kv[0])):
                 if name.endswith(suffix):
                     found.append(CollectedResult(kind, os.path.join(d, name), name))
                     break

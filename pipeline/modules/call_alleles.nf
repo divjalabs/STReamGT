@@ -28,14 +28,14 @@ process MERGE_ALLELES{
 
 
     output:
-    path("${params.kit_id}_genotypes.txt")
-    path("${params.kit_id}_frequency_of_sequences_by_marker.txt")
-    path("${params.kit_id}_positions.txt")
+    path("${params.kit_id}_genotypes.txt"), emit: genotypes
+    path("${params.kit_id}_frequency_of_sequences_by_marker.txt"), emit: frequency
+    path("${params.kit_id}_positions.txt"), emit: positions
 
     script:
     """
     mkdir -p results
-    
+
     # ---- merge genotypes ----
     awk 'FNR==1 && NR!=1 {next} {print}' ${genotypes_files.join(' ')} > ${params.kit_id}_genotypes.txt
 
@@ -44,5 +44,27 @@ process MERGE_ALLELES{
 
     # ---- merge positions ----
     awk 'FNR==1 && NR!=1 {next} {print}' ${pos_files.join(' ')} > ${params.kit_id}_positions.txt
+    """
+}
+
+process CONSENSUS {
+
+    publishDir params.results_dir, mode: 'copy'
+
+    input:
+    path genotypes_file
+    path frequency_file
+    path positions_file
+
+    output:
+    path("${params.kit_id}_consensus_genotypes.txt")
+    path("${params.kit_id}_reference_alleles.txt")
+
+    script:
+    """
+    callConsensus.py --kit_id ${params.kit_id} \
+        --genotypes ${genotypes_file} \
+        --frequency ${frequency_file} \
+        --positions ${positions_file}
     """
 }

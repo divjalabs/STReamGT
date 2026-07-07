@@ -43,6 +43,7 @@ class ResultKind(str, enum.Enum):
     genotypes = "genotypes"
     positions = "positions"
     frequency = "frequency"
+    consensus = "consensus"
     reads_summary = "reads_summary"
     html_report = "html_report"
     ngsfilter = "ngsfilter"

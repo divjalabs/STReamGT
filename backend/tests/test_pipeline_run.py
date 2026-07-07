@@ -37,15 +37,19 @@ def test_collect_results_maps_kinds(tmp_path):
     (res / f"{kit}_genotypes.txt").write_text("x")
     (res / f"{kit}_positions.txt").write_text("x")
     (res / f"{kit}_frequency_of_sequences_by_marker.txt").write_text("x")
+    (res / f"{kit}_consensus_genotypes.txt").write_text("x")
     (rep / f"{kit}_reads_summary.csv").write_text("x")
 
     found = pr.collect_results(str(tmp_path), kit)
     kinds = {r.kind for r in found}
     assert kinds == {
-        ResultKind.genotypes, ResultKind.positions,
-        ResultKind.frequency, ResultKind.reads_summary,
+        ResultKind.genotypes, ResultKind.positions, ResultKind.frequency,
+        ResultKind.consensus, ResultKind.reads_summary,
     }
     assert pr.find_result(found, ResultKind.genotypes).endswith("_genotypes.txt")
+    # the consensus file must map to consensus, not genotypes (both end with _genotypes.txt)
+    assert pr.find_result(found, ResultKind.consensus).endswith("_consensus_genotypes.txt")
+    assert pr.find_result(found, ResultKind.genotypes).endswith(f"{kit}_genotypes.txt")
 
 
 def test_collect_results_empty_when_missing(tmp_path):
