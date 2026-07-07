@@ -64,8 +64,11 @@ def test_status_transitions(client, catalog, admin_token):
     # client may set received, not analysed
     assert client.patch(f"/api/kits/{kit_id}", json={"status": "received"}, headers=bearer(tok_a)).json()["status"] == "received"
     assert client.patch(f"/api/kits/{kit_id}", json={"status": "analysed"}, headers=bearer(tok_a)).status_code == 403
-    # admin may set anything
+    # client cannot self-approve a re-analysis either
+    assert client.patch(f"/api/kits/{kit_id}", json={"status": "reanalyse"}, headers=bearer(tok_a)).status_code == 403
+    # admin may set anything, including reanalyse
     assert client.patch(f"/api/kits/{kit_id}", json={"status": "analysed"}, headers=bearer(admin_token)).json()["status"] == "analysed"
+    assert client.patch(f"/api/kits/{kit_id}", json={"status": "reanalyse"}, headers=bearer(admin_token)).json()["status"] == "reanalyse"
 
 
 def test_non_admin_cannot_create_kit(client, catalog, user_token):

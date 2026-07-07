@@ -52,3 +52,4 @@ class KitStatus(str, enum.Enum):
     sent = "sent"          # admin registered + sent the physical kit to the client
     received = "received"  # client confirmed receipt / registered it
     analysed = "analysed"  # a genotyping job for this kit has succeeded (set automatically)
+    reanalyse = "reanalyse"  # admin re-approved an analysed kit so it can be submitted again

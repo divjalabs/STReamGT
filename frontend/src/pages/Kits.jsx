@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 
-const STATUS_CLASS = { analysed: "ok", received: "", sent: "muted" };
+const STATUS_CLASS = { analysed: "ok", reanalyse: "warn", received: "", sent: "muted" };
 
 export default function Kits() {
   const [kits, setKits] = useState(null);
@@ -42,6 +42,9 @@ export default function Kits() {
                 <td>
                   {k.status === "sent" && (
                     <button className="secondary" onClick={() => markReceived(k.id)}>Mark received</button>
+                  )}
+                  {k.status === "analysed" && (
+                    <span className="muted">analysed once — contact admin to reanalyse</span>
                   )}
                 </td>
               </tr>

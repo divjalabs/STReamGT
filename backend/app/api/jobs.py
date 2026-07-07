@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import User, Kit, Job, SampleBatch, JobStatus
+from app.models import User, Kit, Job, SampleBatch, JobStatus, KitStatus
 from app.auth.deps import get_current_user
 from app.services import storage
 from app.services.storage import DEFAULT_PART_SIZE
@@ -90,6 +90,13 @@ def create_job(
     # Only users granted access to the kit (or admins) may run jobs on it.
     if not current.is_admin and not any(u.id == current.id for u in kit.users):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this kit")
+    # Each kit is analysed once; an admin must set it to 'reanalyse' to re-enable submission.
+    if kit.status == KitStatus.analysed:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This kit has already been analysed. Each kit can be analysed only once — "
+            "contact an admin to re-enable analysis (reanalyse).",
+        )
 
     valid_tags = {t.name for t in kit.tag_columns}
     for b in payload.batches:

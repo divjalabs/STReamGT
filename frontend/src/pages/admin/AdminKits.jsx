@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 
-const STATUSES = ["sent", "received", "analysed"];
-const STATUS_CLASS = { analysed: "ok", received: "", sent: "muted" };
+const STATUSES = ["sent", "received", "analysed", "reanalyse"];
+const STATUS_CLASS = { analysed: "ok", reanalyse: "warn", received: "", sent: "muted" };
 
 /** Type-to-search user picker: input + suggestions + chips. `value` is an array of user ids. */
 function AssigneePicker({ users, value, onChange }) {

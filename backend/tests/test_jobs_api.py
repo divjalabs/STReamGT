@@ -55,6 +55,18 @@ def test_create_job_enqueues_when_granted(client, catalog, admin_token, user_tok
     assert len(no_enqueue) == 1
 
 
+def test_analysed_kit_blocks_until_reanalyse(client, catalog, admin_token, user_token):
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    # admin marks the kit analysed → user can no longer submit
+    client.patch(f"/api/kits/{kit_id}", json={"status": "analysed"}, headers=bearer(admin_token))
+    r = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token))
+    assert r.status_code == 409 and "analysed" in r.text.lower()
+    # admin re-approves → user can submit again
+    ok = client.patch(f"/api/kits/{kit_id}", json={"status": "reanalyse"}, headers=bearer(admin_token))
+    assert ok.status_code == 200 and ok.json()["status"] == "reanalyse"
+    assert client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).status_code == 201
+
+
 def test_reject_unknown_tag_columns(client, catalog, admin_token, user_token):
     kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
     payload = job_payload(kit_id)

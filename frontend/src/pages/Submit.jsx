@@ -58,6 +58,8 @@ export default function Submit() {
     e.preventDefault();
     setErr(null);
     if (!kit) return setErr("Choose a kit.");
+    if (kit.status === "analysed")
+      return setErr("This kit has already been analysed. Contact an admin to re-enable it (reanalyse).");
     setBusy(true);
     try {
       // 1. FASTQ: upload or reference.
@@ -124,6 +126,9 @@ export default function Submit() {
             </select>
           </label>
           {kit && <p className="muted">Species: <b>{kit.species || "—"}</b> · tag columns: {kit.tag_columns.map((t) => t.name).join(", ")}</p>}
+          {kit && kit.status === "analysed" && (
+            <p className="error">⚠️ Each kit can be analysed only once. This kit is already analysed — contact an admin to re-enable it (reanalyse).</p>
+          )}
         </section>
 
         <section className="card">
@@ -195,7 +200,7 @@ export default function Submit() {
         <button type="button" className="secondary" onClick={() => setBatches((bs) => [...bs, { ...newBatch(), selectedTags: kit ? kit.tag_columns.map((t) => t.name) : [] }])}>+ add another sample batch</button>
 
         <div className="submit-bar">
-          <button type="submit" disabled={busy}>{busy ? "Submitting…" : "Submit analysis"}</button>
+          <button type="submit" disabled={busy || kit?.status === "analysed"}>{busy ? "Submitting…" : "Submit analysis"}</button>
         </div>
       </form>
     </div>
