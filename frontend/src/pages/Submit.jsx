@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, uploadFile } from "../api/client.js";
+import SampleTable, { rowsToSampleText, filledWellCount, TOTAL_WELLS } from "../components/SampleTable.jsx";
 
 let batchSeq = 1;
 const newBatch = () => ({
   uid: batchSeq++,
   name: "",
-  sampleMode: "upload", // "upload" | "paste"
+  sampleMode: "upload", // "upload" | "table"
   sampleFile: null,
-  sampleText: "",
+  sampleRows: [],
   selectedTags: [],
 });
 
@@ -29,6 +30,13 @@ export default function Submit() {
   }, []);
 
   const kit = kits.find((k) => String(k.id) === String(kitId));
+
+  // When a kit is picked, tick all of its tag columns by default in every batch.
+  useEffect(() => {
+    if (!kit) return;
+    const all = kit.tag_columns.map((t) => t.name);
+    setBatches((bs) => bs.map((b) => ({ ...b, selectedTags: all })));
+  }, [kitId]);
 
   const setBatch = (uid, patch) =>
     setBatches((bs) => bs.map((b) => (b.uid === uid ? { ...b, ...patch } : b)));
@@ -76,8 +84,9 @@ export default function Submit() {
           if (!b.sampleFile) throw new Error(`Batch ${b.name}: upload a sample sheet.`);
           out.sample_sheet_key = await uploadFile(b.sampleFile, "sample");
         } else {
-          if (!b.sampleText.trim()) throw new Error(`Batch ${b.name}: paste sample positions.`);
-          out.sample_names_text = b.sampleText;
+          const n = filledWellCount(b.sampleRows);
+          if (n < TOTAL_WELLS) throw new Error(`Batch ${b.name}: all ${TOTAL_WELLS} wells must be filled (currently ${n}).`);
+          out.sample_names_text = rowsToSampleText(b.sampleRows);
         }
         outBatches.push(out);
       }
@@ -156,12 +165,12 @@ export default function Submit() {
               <legend>Samples</legend>
               <div className="tabs">
                 <button type="button" className={b.sampleMode === "upload" ? "active" : ""} onClick={() => setBatch(b.uid, { sampleMode: "upload" })}>Upload Excel</button>
-                <button type="button" className={b.sampleMode === "paste" ? "active" : ""} onClick={() => setBatch(b.uid, { sampleMode: "paste" })}>Paste positions</button>
+                <button type="button" className={b.sampleMode === "table" ? "active" : ""} onClick={() => setBatch(b.uid, { sampleMode: "table" })}>Enter samples</button>
               </div>
               {b.sampleMode === "upload" ? (
                 <input type="file" accept=".xlsx" onChange={(e) => setBatch(b.uid, { sampleFile: e.target.files[0] })} />
               ) : (
-                <textarea rows={4} value={b.sampleText} onChange={(e) => setBatch(b.uid, { sampleText: e.target.value })} placeholder="A1,SAMPLE1&#10;B1,SAMPLE2&#10;(position, name — one per line)" />
+                <SampleTable value={b.sampleRows} onChange={(rows) => setBatch(b.uid, { sampleRows: rows })} />
               )}
             </fieldset>
 
@@ -183,7 +192,7 @@ export default function Submit() {
           </section>
         ))}
 
-        <button type="button" className="secondary" onClick={() => setBatches((bs) => [...bs, newBatch()])}>+ add another sample batch</button>
+        <button type="button" className="secondary" onClick={() => setBatches((bs) => [...bs, { ...newBatch(), selectedTags: kit ? kit.tag_columns.map((t) => t.name) : [] }])}>+ add another sample batch</button>
 
         <div className="submit-bar">
           <button type="submit" disabled={busy}>{busy ? "Submitting…" : "Submit analysis"}</button>
