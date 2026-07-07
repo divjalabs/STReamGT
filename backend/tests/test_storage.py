@@ -41,7 +41,15 @@ def test_presign_urls_contain_key(s3_bucket):
 
 
 def test_multipart_presigns_one_url_per_part(s3_bucket):
-    # 250 MiB with 100 MiB parts -> 3 parts
+    # adaptive part size: 250 MiB / 16 MiB parts -> 16 parts
     mp = storage.start_multipart("uploads/1/big/reads.fastq.gz", size=250 * 1024 * 1024)
-    assert mp.upload_id and len(mp.part_urls) == 3
+    assert mp.part_size == 16 * 1024 * 1024
+    assert mp.upload_id and len(mp.part_urls) == 16
     storage.abort_multipart(mp.key, mp.upload_id)
+
+
+def test_choose_part_size_scales_for_huge_files():
+    MiB = 1024 * 1024
+    assert storage.choose_part_size(2 * 1024 * MiB) == 16 * MiB          # 2 GB -> 16 MiB (128 parts)
+    big = storage.choose_part_size(50 * 1024 * MiB)                       # 50 GB -> larger parts
+    assert big > 16 * MiB and (50 * 1024 * MiB) / big <= 500              # stays <= ~500 parts

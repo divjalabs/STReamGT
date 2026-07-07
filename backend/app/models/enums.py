@@ -46,3 +46,9 @@ class ResultKind(str, enum.Enum):
     reads_summary = "reads_summary"
     html_report = "html_report"
     ngsfilter = "ngsfilter"
+
+
+class KitStatus(str, enum.Enum):
+    sent = "sent"          # admin registered + sent the physical kit to the client
+    received = "received"  # client confirmed receipt / registered it
+    analysed = "analysed"  # a genotyping job for this kit has succeeded (set automatically)

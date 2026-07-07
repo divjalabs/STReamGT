@@ -6,9 +6,18 @@ from app.models.enums import (
     ControlKind,
     FastqSource,
     ResultKind,
+    KitStatus,
 )
 from app.models.user import User
-from app.models.kit import Kit, Primer, TagColumn, Control
+from app.models.kit import (
+    Kit,
+    Primer,
+    TagColumn,
+    Control,
+    PrimerPanel,
+    TagLayout,
+    kit_access,
+)
 from app.models.job import Job, SampleBatch, ResultFile
 
 __all__ = [
@@ -18,11 +27,15 @@ __all__ = [
     "ControlKind",
     "FastqSource",
     "ResultKind",
+    "KitStatus",
     "User",
     "Kit",
     "Primer",
     "TagColumn",
     "Control",
+    "PrimerPanel",
+    "TagLayout",
+    "kit_access",
     "Job",
     "SampleBatch",
     "ResultFile",

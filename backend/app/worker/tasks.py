@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 from app.config import settings
 from app.db import SessionLocal
-from app.models import Job, ResultFile, JobStatus, FastqSource, ResultKind
+from app.models import Job, ResultFile, JobStatus, FastqSource, ResultKind, KitStatus
 from app.services import storage, notify
 from app.services.samplesheet import build_input_tsv, BatchRow
 from app.worker.celery_app import celery_app
@@ -217,6 +217,7 @@ def execute_job(job_id: int) -> str:
                               size_bytes=os.path.getsize(report_html)))
         db.commit()
 
+        kit.status = KitStatus.analysed  # a successful job marks the kit analysed
         set_status(JobStatus.succeeded, finished_at=_now())
         _safe_notify(notify.send_job_succeeded, job.user.email, kit.kit_code, job.public_id)
         return "succeeded"

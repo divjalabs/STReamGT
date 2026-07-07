@@ -12,7 +12,8 @@ h1 { font-size: 1.6rem; } h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
 .nav { display: flex; align-items: center; gap: 1rem; padding: .7rem 1.2rem;
   background: var(--card); border-bottom: 1px solid var(--line); }
 .nav .brand { font-weight: 700; font-size: 1.1rem; }
-.nav nav { display: flex; gap: 1rem; }
+.nav nav { display: flex; gap: 1rem; align-items: center; }
+.nav-sep { color: var(--line); }
 .spacer { flex: 1; }
 .muted { color: var(--muted); }
 
@@ -45,6 +46,13 @@ button.link { background: none; color: var(--err); padding: 0; }
   font-weight: 500; cursor: pointer; }
 .chip.on { background: var(--brand); color: #fff; border-color: var(--brand); }
 .chip input { width: auto; margin: 0; }
+.chip-x { background: none; color: inherit; padding: 0 0 0 .35rem; font-size: 1rem; line-height: 1; }
+.typeahead { position: relative; }
+.suggestions { position: absolute; z-index: 10; left: 0; right: 0; margin: .2rem 0 0; padding: 0;
+  list-style: none; background: var(--card); border: 1px solid var(--line); border-radius: 7px;
+  box-shadow: 0 6px 16px rgba(0,0,0,.10); max-height: 200px; overflow: auto; }
+.suggestions li { padding: .45rem .6rem; cursor: pointer; }
+.suggestions li:hover { background: #eef2ff; }
 
 .table { width: 100%; border-collapse: collapse; background: var(--card);
   border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }

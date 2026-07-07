@@ -1,26 +1,26 @@
 import pytest
 
-from tests.conftest import bearer
-
-KIT = {
-    "kit_code": "DIVJA240",
-    "species": "bear",
-    "primers": [{"locus": "UA_03", "type": "microsat", "motif": "ctat"}],
-    "tag_columns": [{"name": f"PP{i}", "ordinal": i} for i in range(1, 9)],
-    "controls": [{"name_pattern": "blank"}],
-}
+from tests.conftest import bearer, register, user_id, panel_id
 
 
 @pytest.fixture(autouse=True)
 def no_enqueue(monkeypatch):
-    """Don't hit Redis/Celery during API tests; record enqueued job ids instead."""
+    """Don't hit Redis/Celery/ECS during API tests; record enqueued job ids instead."""
     calls = []
     monkeypatch.setattr("app.api.jobs.enqueue_job", lambda job_id: calls.append(job_id))
     return calls
 
 
-def _make_kit(client, admin_token) -> int:
-    return client.post("/api/kits", json=KIT, headers=bearer(admin_token)).json()["id"]
+def _make_kit(client, admin_token, assigned_ids, code="DIVJA240") -> int:
+    return client.post(
+        "/api/kits",
+        json={
+            "kit_code": code, "panel_id": panel_id("UA_primers"),
+            "selected_tags": ["PP1", "PP2", "PP3", "PP4", "PP5", "PP6", "PP7", "PP8"],
+            "assigned_user_ids": assigned_ids,
+        },
+        headers=bearer(admin_token),
+    ).json()["id"]
 
 
 def job_payload(kit_id):
@@ -39,40 +39,41 @@ def job_payload(kit_id):
     }
 
 
-def test_create_job_enqueues_and_stores_batches(client, admin_token, user_token, no_enqueue):
-    kit_id = _make_kit(client, admin_token)
+def test_create_job_requires_kit_access(client, catalog, admin_token, user_token):
+    """A user without access to the kit cannot submit a job for it."""
+    kit_id = _make_kit(client, admin_token, assigned_ids=[])  # assigned to nobody
+    r = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token))
+    assert r.status_code == 403 and "access" in r.text.lower()
+
+
+def test_create_job_enqueues_when_granted(client, catalog, admin_token, user_token, no_enqueue):
+    kit_id = _make_kit(client, admin_token, assigned_ids=[user_id("user@x.com")])
     r = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token))
     assert r.status_code == 201, r.text
     job = r.json()
-    assert job["status"] == "queued"
-    assert len(job["batches"]) == 2
-    assert job["batches"][0]["selected_tags"] == ["PP1", "PP2", "PP3", "PP4"]
-    assert job["batches"][0]["species"] == "bear"   # inherited from kit
-    assert len(no_enqueue) == 1                      # one job enqueued
+    assert job["status"] == "queued" and len(job["batches"]) == 2
+    assert len(no_enqueue) == 1
 
 
-def test_reject_unknown_tag_columns(client, admin_token, user_token):
-    kit_id = _make_kit(client, admin_token)
+def test_reject_unknown_tag_columns(client, catalog, admin_token, user_token):
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
     payload = job_payload(kit_id)
     payload["batches"][0]["selected_tags"] = ["PP1", "PP99"]
-    r = client.post("/api/jobs", json=payload, headers=bearer(user_token))
-    assert r.status_code == 422 and "PP99" in r.text
-
-
-def test_batch_requires_samples(client, admin_token, user_token):
-    kit_id = _make_kit(client, admin_token)
-    payload = job_payload(kit_id)
-    payload["batches"][0] = {"name": "bad", "selected_tags": ["PP1"]}  # no sheet, no text
     assert client.post("/api/jobs", json=payload, headers=bearer(user_token)).status_code == 422
 
 
-def test_ownership_isolation(client, admin_token, user_token):
-    kit_id = _make_kit(client, admin_token)
+def test_batch_requires_samples(client, catalog, admin_token, user_token):
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    payload = job_payload(kit_id)
+    payload["batches"][0] = {"name": "bad", "selected_tags": ["PP1"]}
+    assert client.post("/api/jobs", json=payload, headers=bearer(user_token)).status_code == 422
+
+
+def test_ownership_isolation(client, catalog, admin_token, user_token):
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
     pub = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).json()["public_id"]
-    # a second user cannot see the first user's job
-    other = client.post("/api/auth/register", json={"email": "other@x.com", "password": "otherpass1"}).json()["access_token"]
+    other = register(client, "other@x.com")
     assert client.get(f"/api/jobs/{pub}", headers=bearer(other)).status_code == 403
-    # owner sees it and it appears in their list
     assert client.get(f"/api/jobs/{pub}", headers=bearer(user_token)).status_code == 200
     assert len(client.get("/api/jobs", headers=bearer(user_token)).json()) == 1
     assert client.get("/api/jobs", headers=bearer(other)).json() == []

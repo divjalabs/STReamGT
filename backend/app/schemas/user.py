@@ -24,6 +24,13 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
+class UserUpdate(BaseModel):
+    """Admin-only: promote/demote or (de)activate a user."""
+
+    role: UserRole | None = None
+    is_active: bool | None = None
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

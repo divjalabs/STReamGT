@@ -87,6 +87,9 @@ def create_job(
     kit = db.get(Kit, payload.kit_id)
     if kit is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Kit not found")
+    # Only users granted access to the kit (or admins) may run jobs on it.
+    if not current.is_admin and not any(u.id == current.id for u in kit.users):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this kit")
 
     valid_tags = {t.name for t in kit.tag_columns}
     for b in payload.batches:

@@ -7,10 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.auth.security import hash_password, verify_password, create_access_token
 from app.auth.deps import get_current_user
 from app.schemas.user import UserCreate, UserOut, Token
+from app.services import notify
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -28,6 +29,16 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> Token:
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Best-effort: notify admins of the new registration (never block signup on email).
+    try:
+        admin_emails = list(
+            db.scalars(select(User.email).where(User.role == UserRole.admin))
+        )
+        notify.send_new_user_registered(admin_emails, user.email, user.organisation)
+    except Exception:  # noqa: BLE001
+        pass
+
     token = create_access_token(str(user.id), extra={"role": user.role.value})
     return Token(access_token=token, user=UserOut.model_validate(user))
 

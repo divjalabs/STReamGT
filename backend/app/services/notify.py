@@ -41,6 +41,21 @@ def send_job_succeeded(to: str, kit_code: str, public_id: str) -> None:
     _send(to, subject, html, text)
 
 
+def send_new_user_registered(admin_emails: list[str], new_email: str, organisation: str | None) -> None:
+    """Notify admins that a new client account was created."""
+    if not admin_emails:
+        return
+    org = f" ({organisation})" if organisation else ""
+    subject = f"[{settings.app_name}] New user registered: {new_email}"
+    text = f"A new user registered: {new_email}{org}.\nGrant kit access at {settings.frontend_base_url}/admin/users\n"
+    html = (
+        f"<p>A new user registered: <b>{new_email}</b>{org}.</p>"
+        f'<p><a href="{settings.frontend_base_url}/admin/users">Manage users &amp; grant kit access</a></p>'
+    )
+    for addr in admin_emails:
+        _send(addr, subject, html, text)
+
+
 def send_job_failed(to: str, kit_code: str, public_id: str, error: str) -> None:
     url = _job_url(public_id)
     subject = f"[{settings.app_name}] Job {kit_code} failed"

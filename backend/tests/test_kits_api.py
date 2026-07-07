@@ -1,44 +1,78 @@
-from tests.conftest import bearer
-
-KIT_PAYLOAD = {
-    "kit_code": "DIVJA240",
-    "species": "bear",
-    "description": "brown bear STR panel",
-    "primers": [
-        {"locus": "UA_03", "type": "microsat", "primer_f": "gctc", "primer_r": "ctgg", "motif": "ctat"},
-        {"locus": "ZF1L", "type": "snp", "primer_f": "gagc", "primer_r": "ggca", "sequence": "X:ACGT/Y:ACGA"},
-    ],
-    "tag_columns": [{"name": f"PP{i}", "ordinal": i} for i in range(1, 9)],
-    "controls": [{"name_pattern": "blank", "kind": "negative"}],
-}
+from tests.conftest import bearer, register, user_id, panel_id
 
 
-def test_admin_can_create_kit_and_user_can_list(client, admin_token, user_token):
-    # admin creates
-    r = client.post("/api/kits", json=KIT_PAYLOAD, headers=bearer(admin_token))
+def _register_kit(client, admin_token, assigned_ids, code="DIVJA240"):
+    payload = {
+        "kit_code": code,
+        "panel_id": panel_id("UA_primers"),
+        "selected_tags": ["PP1", "PP2", "PP3", "PP4"],
+        "assigned_user_ids": assigned_ids,
+    }
+    return client.post("/api/kits", json=payload, headers=bearer(admin_token))
+
+
+def test_admin_registers_kit_from_panel(client, catalog, admin_token):
+    r = client.post(
+        "/api/kits",
+        json={
+            "kit_code": "DIVJA240",
+            "panel_id": panel_id("UA_primers"),
+            "selected_tags": ["PP1", "PP2", "PP3", "PP4"],
+        },
+        headers=bearer(admin_token),
+    )
     assert r.status_code == 201, r.text
     kit = r.json()
-    assert kit["kit_code"] == "DIVJA240"
-    assert len(kit["primers"]) == 2
-    assert len(kit["tag_columns"]) == 8
-    assert kit["primers"][0]["motif"] == "ctat"          # STR carries motif
-    assert kit["primers"][1]["sequence"] == "X:ACGT/Y:ACGA"  # SNP carries sequence
-
-    # duplicate kit_code rejected
-    assert client.post("/api/kits", json=KIT_PAYLOAD, headers=bearer(admin_token)).status_code == 409
-
-    # regular user can list (needs it for the submit picker) but sees the tag columns
-    lst = client.get("/api/kits", headers=bearer(user_token))
-    assert lst.status_code == 200
-    assert lst.json()[0]["tag_columns"][0]["name"] == "PP1"
+    assert kit["species"] == "brown bear"          # denormalized from the panel
+    assert kit["status"] == "sent"                 # default
+    assert [t["name"] for t in kit["tag_columns"]] == ["PP1", "PP2", "PP3", "PP4"]
+    assert kit["controls"][0]["name_pattern"] == "blank"  # default control
+    assert kit["panel"]["code"] == "UA_primers"
 
 
-def test_regular_user_cannot_create_or_delete(client, user_token):
-    assert client.post("/api/kits", json=KIT_PAYLOAD, headers=bearer(user_token)).status_code == 403
+def test_unknown_tag_columns_rejected(client, catalog, admin_token):
+    r = client.post(
+        "/api/kits",
+        json={"kit_code": "K1", "panel_id": panel_id(), "selected_tags": ["PP1", "PP99"]},
+        headers=bearer(admin_token),
+    )
+    assert r.status_code == 422 and "PP99" in r.text
 
 
-def test_get_and_delete_kit(client, admin_token):
-    kit_id = client.post("/api/kits", json=KIT_PAYLOAD, headers=bearer(admin_token)).json()["id"]
-    assert client.get(f"/api/kits/{kit_id}", headers=bearer(admin_token)).status_code == 200
+def test_access_control(client, catalog, admin_token):
+    tok_a = register(client, "a@x.com")
+    tok_b = register(client, "b@x.com")
+    # kit assigned only to user A
+    r = _register_kit(client, admin_token, [user_id("a@x.com")])
+    assert r.status_code == 201
+    kit_id = r.json()["id"]
+
+    # A sees it; B does not; admin sees it
+    assert [k["kit_code"] for k in client.get("/api/kits", headers=bearer(tok_a)).json()] == ["DIVJA240"]
+    assert client.get("/api/kits", headers=bearer(tok_b)).json() == []
+    assert len(client.get("/api/kits", headers=bearer(admin_token)).json()) == 1
+
+    # direct get: A ok, B forbidden
+    assert client.get(f"/api/kits/{kit_id}", headers=bearer(tok_a)).status_code == 200
+    assert client.get(f"/api/kits/{kit_id}", headers=bearer(tok_b)).status_code == 403
+
+
+def test_status_transitions(client, catalog, admin_token):
+    tok_a = register(client, "a@x.com")
+    kit_id = _register_kit(client, admin_token, [user_id("a@x.com")]).json()["id"]
+
+    # client may set received, not analysed
+    assert client.patch(f"/api/kits/{kit_id}", json={"status": "received"}, headers=bearer(tok_a)).json()["status"] == "received"
+    assert client.patch(f"/api/kits/{kit_id}", json={"status": "analysed"}, headers=bearer(tok_a)).status_code == 403
+    # admin may set anything
+    assert client.patch(f"/api/kits/{kit_id}", json={"status": "analysed"}, headers=bearer(admin_token)).json()["status"] == "analysed"
+
+
+def test_non_admin_cannot_create_kit(client, catalog, user_token):
+    assert _register_kit(client, user_token, []).status_code == 403
+
+
+def test_delete_kit(client, catalog, admin_token):
+    kit_id = _register_kit(client, admin_token, []).json()["id"]
     assert client.delete(f"/api/kits/{kit_id}", headers=bearer(admin_token)).status_code == 204
     assert client.get(f"/api/kits/{kit_id}", headers=bearer(admin_token)).status_code == 404

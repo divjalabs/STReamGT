@@ -2,16 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, ConfigDict
 
-from app.models.enums import PrimerType, ControlKind
-
-
-class PrimerIn(BaseModel):
-    locus: str
-    type: PrimerType
-    primer_f: str | None = None
-    primer_r: str | None = None
-    motif: str | None = None
-    sequence: str | None = None
+from app.models.enums import ControlKind, KitStatus
+from app.schemas.panel import PanelSummary
 
 
 class TagColumnIn(BaseModel):
@@ -24,22 +16,6 @@ class ControlIn(BaseModel):
     kind: ControlKind = ControlKind.negative
 
 
-class KitCreate(BaseModel):
-    kit_code: str = Field(min_length=1, max_length=64)
-    species: str | None = None
-    description: str | None = None
-    primers_csv_key: str | None = None
-    tags_csv_key: str | None = None
-    primers: list[PrimerIn] = []
-    tag_columns: list[TagColumnIn] = []
-    controls: list[ControlIn] = []
-
-
-class PrimerOut(PrimerIn):
-    model_config = ConfigDict(from_attributes=True)
-    id: int
-
-
 class TagColumnOut(TagColumnIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -50,6 +26,42 @@ class ControlOut(ControlIn):
     id: int
 
 
+def _default_controls() -> list[ControlIn]:
+    return [ControlIn(name_pattern="blank", kind=ControlKind.negative)]
+
+
+class KitCreate(BaseModel):
+    """Admin registers a kit by picking a panel + tag columns (no file uploads)."""
+
+    kit_code: str = Field(min_length=1, max_length=64)
+    panel_id: int
+    selected_tags: list[str] = Field(min_length=1, examples=[["PP1", "PP2", "PP3", "PP4"]])
+    controls: list[ControlIn] = Field(default_factory=_default_controls)
+    description: str | None = None
+    status: KitStatus = KitStatus.sent
+    assigned_user_ids: list[int] = []
+
+
+class KitUpdate(BaseModel):
+    """Admin edits status/description/access; a client may only set status=received on their kit."""
+
+    status: KitStatus | None = None
+    description: str | None = None
+    assigned_user_ids: list[int] | None = None
+
+
+class KitSummary(BaseModel):
+    """Lightweight view for the kit picker / client kit list / admin table."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    kit_code: str
+    species: str | None
+    status: KitStatus
+    tag_columns: list[TagColumnOut]
+    assigned_user_ids: list[int]
+
+
 class KitOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,19 +69,8 @@ class KitOut(BaseModel):
     kit_code: str
     species: str | None
     description: str | None
-    primers_csv_key: str | None
-    tags_csv_key: str | None
-    primers: list[PrimerOut]
+    status: KitStatus
+    panel: PanelSummary | None
     tag_columns: list[TagColumnOut]
     controls: list[ControlOut]
-
-
-class KitSummary(BaseModel):
-    """Lightweight view for the kit picker on the submit page."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    kit_code: str
-    species: str | None
-    tag_columns: list[TagColumnOut]
+    assigned_user_ids: list[int]

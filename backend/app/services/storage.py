@@ -121,6 +121,11 @@ def upload_file(src_path: str, key: str) -> None:
     _client().upload_file(src_path, settings.s3_bucket, key)
 
 
+def put_bytes(key: str, body: bytes, content_type: str = "text/csv") -> None:
+    """Store in-memory bytes (e.g. an uploaded panel CSV) directly to S3."""
+    _client().put_object(Bucket=settings.s3_bucket, Key=key, Body=body, ContentType=content_type)
+
+
 def object_exists(key: str) -> bool:
     from botocore.exceptions import ClientError
 

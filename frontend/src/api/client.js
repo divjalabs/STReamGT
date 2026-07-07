@@ -54,6 +54,22 @@ export const api = {
   // kits
   listKits: () => request("/kits"),
   getKit: (id) => request(`/kits/${id}`),
+  createKit: (payload) => request("/kits", { method: "POST", body: payload }),
+  updateKit: (id, body) => request(`/kits/${id}`, { method: "PATCH", body }),
+  deleteKit: (id) => request(`/kits/${id}`, { method: "DELETE" }),
+  getTagLayout: () => request("/kits/tag-layout"),
+
+  // panels (admin)
+  listPanels: () => request("/panels"),
+  getPanel: (id) => request(`/panels/${id}`),
+  createPanel: (form) => request("/panels", { method: "POST", form }),
+  updatePanel: (id, body) => request(`/panels/${id}`, { method: "PATCH", body }),
+  deletePanel: (id) => request(`/panels/${id}`, { method: "DELETE" }),
+  downloadPanel: (id) => request(`/panels/${id}/download`),
+
+  // users (admin)
+  listUsers: () => request("/users"),
+  updateUser: (id, body) => request(`/users/${id}`, { method: "PATCH", body }),
 
   // jobs
   createJob: (payload) => request("/jobs", { method: "POST", body: payload }),
