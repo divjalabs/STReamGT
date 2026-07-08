@@ -9,9 +9,9 @@ editor_options:
 
 *For STReamGT administrators.*
 
-This guide covers the admin-only features of the STReamGT web app: managing primer panels, registering and assigning kits, managing users, and handling client issues. It assumes you're already familiar with the client-facing flow — if not, read the [User Guide](./user-manual.md) first, since admins can do everything a client can, plus the extra screens described here.
+This guide covers the admin-only features of the STReamGT web app: managing primer panels, registering and assigning kits, managing users, and handling client issues. It assumes you're already familiar with the client-facing flow — if not, read the [User Guide](/manuals/user) first, since admins can do everything a client can, plus the extra screens described here.
 
-> **Scope:** this document is about the **web app admin UI** only. For the API-level way to onboard a kit (tokens, `POST /api/kits`, file keys), see [`kit-onboarding.md`](./kit-onboarding.md). For infrastructure, deployment, and AWS operations, see [`aws-setup.md`](./aws-setup.md) and [`deployment.md`](./deployment.md).
+> **Scope:** this document is about the **web app admin UI** only. For the API-level way to onboard a kit (tokens, `POST /api/kits`, file keys), see [`kit-onboarding.md`](https://github.com/PazhenkovaEA/STReamGT/blob/main/docs/kit-onboarding.md). For infrastructure, deployment, and AWS operations, see [`aws-setup.md`](https://github.com/PazhenkovaEA/STReamGT/blob/main/docs/aws-setup.md) and [`deployment.md`](https://github.com/PazhenkovaEA/STReamGT/blob/main/docs/deployment.md).
 
 ------------------------------------------------------------------------
 
@@ -126,10 +126,10 @@ You **cannot change your own account** here (no self-demotion or self-deactivati
 
 ## 7. Related documentation
 
-- [User Guide](./user-manual.md) — the client-facing flow.
-- [`kit-onboarding.md`](./kit-onboarding.md) — registering a kit via the API instead of the UI.
-- [`architecture.md`](./architecture.md) — how the platform is put together.
-- [`aws-setup.md`](./aws-setup.md), [`deployment.md`](./deployment.md) — infrastructure & ops.
+- [User Guide](/manuals/user) — the client-facing flow.
+- [`kit-onboarding.md`](https://github.com/PazhenkovaEA/STReamGT/blob/main/docs/kit-onboarding.md) — registering a kit via the API instead of the UI.
+- [`architecture.md`](https://github.com/PazhenkovaEA/STReamGT/blob/main/docs/architecture.md) — how the platform is put together.
+- [`aws-setup.md`](https://github.com/PazhenkovaEA/STReamGT/blob/main/docs/aws-setup.md), [`deployment.md`](https://github.com/PazhenkovaEA/STReamGT/blob/main/docs/deployment.md) — infrastructure & ops.
 
 ------------------------------------------------------------------------
 
