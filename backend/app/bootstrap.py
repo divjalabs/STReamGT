@@ -24,8 +24,14 @@ def create_tables() -> None:
 
 
 def reset_tables() -> None:
-    """DESTRUCTIVE: drop every table and recreate. Only for dev / a fresh deploy."""
-    Base.metadata.drop_all(bind=engine)
+    """DESTRUCTIVE: drop everything and recreate. On Postgres, drop the whole schema with CASCADE
+    so a *previous, incompatible* schema (stale FKs metadata.drop_all can't order) is wiped clean."""
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            conn.exec_driver_sql("DROP SCHEMA public CASCADE")
+            conn.exec_driver_sql("CREATE SCHEMA public")
+    else:
+        Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
 

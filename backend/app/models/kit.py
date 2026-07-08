@@ -61,8 +61,8 @@ class Primer(Base):
     type: Mapped[PrimerType] = mapped_column(SAEnum(PrimerType, name="primer_type"), nullable=False)
     primer_f: Mapped[str | None] = mapped_column(String(512))
     primer_r: Mapped[str | None] = mapped_column(String(512))
-    motif: Mapped[str | None] = mapped_column(String(128))
-    sequence: Mapped[str | None] = mapped_column(String(2048))
+    motif: Mapped[str | None] = mapped_column(String(2048))  # usually a short repeat, but some
+    sequence: Mapped[str | None] = mapped_column(String(2048))  # panels stuff a reference here
 
     panel: Mapped["PrimerPanel"] = relationship(back_populates="primers")
 
