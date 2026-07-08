@@ -2,6 +2,7 @@ import { Routes, Route, Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
+import Home from "./pages/Home.jsx";
 import Jobs from "./pages/Jobs.jsx";
 import JobDetail from "./pages/JobDetail.jsx";
 import Submit from "./pages/Submit.jsx";
@@ -9,6 +10,7 @@ import Kits from "./pages/Kits.jsx";
 import AdminKits from "./pages/admin/AdminKits.jsx";
 import AdminPanels from "./pages/admin/AdminPanels.jsx";
 import AdminUsers from "./pages/admin/AdminUsers.jsx";
+import Manual from "./pages/Manual.jsx";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -32,7 +34,8 @@ function Nav() {
     <header className="nav">
       <Link to="/" className="brand">STReamGT</Link>
       <nav>
-        <Link to="/">My jobs</Link>
+        <Link to="/">Home</Link>
+        <Link to="/jobs">My jobs</Link>
         <Link to="/kits">My kits</Link>
         <Link to="/submit">New analysis</Link>
         {isAdmin && <span className="nav-sep">·</span>}
@@ -54,7 +57,9 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/" element={<Protected><Jobs /></Protected>} />
+        <Route path="/" element={<Protected><Home /></Protected>} />
+        <Route path="/jobs" element={<Protected><Jobs /></Protected>} />
+        <Route path="/manuals/:slug" element={<Manual />} />
         <Route path="/kits" element={<Protected><Kits /></Protected>} />
         <Route path="/submit" element={<Protected><Submit /></Protected>} />
         <Route path="/jobs/:publicId" element={<Protected><JobDetail /></Protected>} />
