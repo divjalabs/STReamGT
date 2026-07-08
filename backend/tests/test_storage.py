@@ -1,0 +1,63 @@
+"""S3 storage helpers, exercised against moto's mock S3."""
+import boto3
+import pytest
+from moto import mock_aws
+
+from app.config import settings
+from app.services import storage
+
+
+@pytest.fixture()
+def s3_bucket():
+    with mock_aws():
+        storage._client.cache_clear()  # rebuild client inside the mock
+        boto3.client("s3", region_name=settings.s3_region).create_bucket(
+            Bucket=settings.s3_bucket,
+            CreateBucketConfiguration={"LocationConstraint": settings.s3_region},
+        )
+        yield
+        storage._client.cache_clear()
+
+
+def test_upload_download_exists_roundtrip(tmp_path, s3_bucket):
+    src = tmp_path / "in.txt"
+    src.write_text("hello genotypes")
+    key = "results/DIVJA240/job1/genotypes.txt"
+
+    assert storage.object_exists(key) is False
+    storage.upload_file(str(src), key)
+    assert storage.object_exists(key) is True
+
+    dest = tmp_path / "out.txt"
+    storage.download_file(key, str(dest))
+    assert dest.read_text() == "hello genotypes"
+
+
+def test_presign_urls_contain_key(s3_bucket):
+    put = storage.presign_put("uploads/1/abc/x.xlsx")
+    assert "uploads/1/abc/x.xlsx" in put and "Signature" in put
+    get = storage.presign_get("results/k/j/genotypes.txt", filename="genotypes.txt")
+    assert "genotypes.txt" in get
+
+
+def test_presign_get_inline_vs_attachment(s3_bucket):
+    dl = storage.presign_get("k/j/report.html", filename="report.html").lower()
+    assert "response-content-disposition" in dl               # download forces attachment
+    view = storage.presign_get("k/j/report.html", inline=True, content_type="text/html").lower()
+    assert "response-content-disposition" not in view          # inline: no attachment
+    assert "response-content-type" in view                     # served as html
+
+
+def test_multipart_presigns_one_url_per_part(s3_bucket):
+    # adaptive part size: 250 MiB / 16 MiB parts -> 16 parts
+    mp = storage.start_multipart("uploads/1/big/reads.fastq.gz", size=250 * 1024 * 1024)
+    assert mp.part_size == 16 * 1024 * 1024
+    assert mp.upload_id and len(mp.part_urls) == 16
+    storage.abort_multipart(mp.key, mp.upload_id)
+
+
+def test_choose_part_size_scales_for_huge_files():
+    MiB = 1024 * 1024
+    assert storage.choose_part_size(2 * 1024 * MiB) == 16 * MiB          # 2 GB -> 16 MiB (128 parts)
+    big = storage.choose_part_size(50 * 1024 * MiB)                       # 50 GB -> larger parts
+    assert big > 16 * MiB and (50 * 1024 * MiB) / big <= 500              # stays <= ~500 parts

@@ -1,3 +1,0 @@
-kit_id	sample_path	tags	tags_path	primers_path	fastq1_path	fastq2_path
-DIVJA240	./DIVJA240/AP/251211_DIVJA240_HRM01.xlsx	PP1-PP4	./primers_tags/wolf_tags1.csv	./primers_tags/UA_primers.csv	./DIVJA240/UPL25-007267-rep1_1.fastq.gz	./DIVJA240/UPL25-007267-rep1_2.fastq.gz
-DIVJA240	./DIVJA240/AP/251211_DIVJA240_HRM02.xlsx	PP5-PP8	./primers_tags/wolf_tags1.csv	./primers_tags/UA_primers.csv	./DIVJA240/UPL25-007267-rep1_1.fastq.gz	./DIVJA240/UPL25-007267-rep1_2.fastq.gz
