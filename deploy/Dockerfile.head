@@ -33,6 +33,7 @@ COPY backend/pyproject.toml ./
 RUN /opt/venv/bin/pip install --upgrade pip && /opt/venv/bin/pip install .
 
 COPY backend/app ./app
+COPY backend/seed_data ./seed_data
 COPY pipeline /app/pipeline
 RUN mkdir -p /scratch
 
