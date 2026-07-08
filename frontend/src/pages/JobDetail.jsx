@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api/client.js";
 
-const STEPS = ["queued", "staging", "running", "rendering", "uploading", "succeeded"];
+const STEPS = ["queued", "staging", "running", "uploading", "succeeded"];
+const REPORT_KINDS = ["html_report", "consensus_report"];
 
 export default function JobDetail() {
   const { publicId } = useParams();
@@ -90,7 +91,11 @@ export default function JobDetail() {
             {results.map((r) => (
               <li key={r.filename}>
                 <span className="badge">{r.kind}</span>
-                <a href={r.url}>{r.filename}</a>
+                <span>{r.filename}</span>
+                {REPORT_KINDS.includes(r.kind) && r.view_url && (
+                  <a href={r.view_url} target="_blank" rel="noreferrer">Open ↗</a>
+                )}
+                <a href={r.url}>Download</a>
               </li>
             ))}
           </ul>

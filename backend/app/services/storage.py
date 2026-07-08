@@ -62,10 +62,15 @@ def presign_put(key: str, content_type: str = "application/octet-stream") -> str
     )
 
 
-def presign_get(key: str, filename: str | None = None) -> str:
-    """Presigned GET for downloads; optional filename sets a download disposition."""
+def presign_get(key: str, filename: str | None = None, inline: bool = False,
+                content_type: str | None = None) -> str:
+    """Presigned GET. By default sets an attachment disposition (download); when inline=True it
+    serves inline (e.g. so an HTML report renders in a browser tab) with the given content_type."""
     params = {"Bucket": settings.s3_bucket, "Key": key}
-    if filename:
+    if inline:
+        if content_type:
+            params["ResponseContentType"] = content_type
+    elif filename:
         params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
     return _client().generate_presigned_url(
         "get_object", Params=params, ExpiresIn=settings.presign_expire_seconds

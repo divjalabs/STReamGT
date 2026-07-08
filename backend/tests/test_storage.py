@@ -40,6 +40,14 @@ def test_presign_urls_contain_key(s3_bucket):
     assert "genotypes.txt" in get
 
 
+def test_presign_get_inline_vs_attachment(s3_bucket):
+    dl = storage.presign_get("k/j/report.html", filename="report.html").lower()
+    assert "response-content-disposition" in dl               # download forces attachment
+    view = storage.presign_get("k/j/report.html", inline=True, content_type="text/html").lower()
+    assert "response-content-disposition" not in view          # inline: no attachment
+    assert "response-content-type" in view                     # served as html
+
+
 def test_multipart_presigns_one_url_per_part(s3_bucket):
     # adaptive part size: 250 MiB / 16 MiB parts -> 16 parts
     mp = storage.start_multipart("uploads/1/big/reads.fastq.gz", size=250 * 1024 * 1024)

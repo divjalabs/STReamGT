@@ -58,9 +58,9 @@ process CONSENSUS {
     path positions_file
 
     output:
-    path("${params.kit_id}_consensus_genotypes.txt")
-    path("${params.kit_id}_reference_alleles.txt")
-    path("${params.kit_id}_consensus.log")
+    path("${params.kit_id}_consensus_genotypes.txt"), emit: consensus
+    path("${params.kit_id}_reference_alleles.txt"), emit: reference
+    path("${params.kit_id}_consensus.log"), emit: log
 
     script:
     """

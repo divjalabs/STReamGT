@@ -44,12 +44,14 @@ _RESULT_SUFFIXES = {
     "_positions.txt": ResultKind.positions,
     "_frequency_of_sequences_by_marker.txt": ResultKind.frequency,
     "_reads_summary.csv": ResultKind.reads_summary,
+    "_consensus_report.html": ResultKind.consensus_report,  # must win over "_report.html"
+    "_report.html": ResultKind.html_report,
 }
 
 
 def build_nextflow_cmd(
     *, pipeline_dir: str, input_tsv: str, run_dir: str, profile: str,
-    min_identity: float, min_overlap: int,
+    min_identity: float, min_overlap: int, expected_read_number: int | None = None,
 ) -> list[str]:
     """Argument vector for `nextflow run`, meant to run with cwd=run_dir.
 
@@ -57,7 +59,7 @@ def build_nextflow_cmd(
     and nests results/ + reports/ under it, so outputs land at {run_dir}/{kit_id}/...
     (see collect_results). Runs headless: no ANSI, log inside the run dir.
     """
-    return [
+    cmd = [
         "nextflow", "-log", os.path.join(run_dir, ".nextflow.log"),
         "run", os.path.join(pipeline_dir, "main.nf"),
         "-profile", profile,
@@ -66,20 +68,9 @@ def build_nextflow_cmd(
         "--min_identity", str(min_identity),
         "--min_overlap", str(min_overlap),
     ]
-
-
-def build_render_cmd(*, rmd_path: str, output_html: str, expected_reads: int | None,
-                     run_stats: str, alleles: str, positions: str) -> list[str]:
-    """Rscript command to render Genotype_stat.Rmd with the job's outputs as params."""
-    params = (
-        f"expected_read_number={expected_reads if expected_reads is not None else 'NA'},"
-        f"run_stats='{run_stats}',alleles='{alleles}',positions='{positions}'"
-    )
-    r_expr = (
-        f"rmarkdown::render('{rmd_path}', output_file='{output_html}', "
-        f"params=list({params}), envir=new.env())"
-    )
-    return ["Rscript", "-e", r_expr]
+    if expected_read_number:  # drives the reference line in the HTML report
+        cmd += ["--expected_read_number", str(expected_read_number)]
+    return cmd
 
 
 @dataclass

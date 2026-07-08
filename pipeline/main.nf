@@ -6,6 +6,7 @@
 params.input = "input.tsv"
 params.min_identity = 0.9
 params.min_overlap = 20
+params.expected_read_number = null   // optional: shown as a reference line in the report
 
 // extract kit_id from TSV
 kit_id_val = file(params.input)
@@ -48,6 +49,7 @@ include { CALL_ALLELES } from './modules/call_alleles'
 include { MERGE_ALLELES } from './modules/call_alleles'
 include { CONSENSUS } from './modules/call_alleles'
 include { CREATE_SUMMARY } from './modules/create_summary'
+include { REPORT } from './modules/report'
 
 // Load sample sheet
 
@@ -112,8 +114,9 @@ workflow {
     merged = MERGE_ALLELES(genotypes_list, freq_list, pos_list)
 
     // Project-level consensus across replicates (additional output).
-    CONSENSUS(merged.genotypes, merged.frequency, merged.positions)
-        CREATE_SUMMARY(
+    consensus_ch = CONSENSUS(merged.genotypes, merged.frequency, merged.positions)
+
+    summary_ch = CREATE_SUMMARY(
         params.kit_id,
         file(fastq1_path),   // raw input FASTQs (wrap in file() so Nextflow stages it as a path)
         paired_ch,              // paired-filtered FASTQs
@@ -121,8 +124,18 @@ workflow {
         demultiplex_ch.ngsfilter_stats    // stats/errors from demultiplex
     )
 
-    
-    //gzip or delete intermediate files 
+    // Interactive HTML result reports (funnel, per-locus/replicate, plate heatmaps, consensus plots).
+    REPORT(
+        summary_ch.summary,
+        merged.genotypes,
+        merged.positions,
+        merged.frequency,
+        consensus_ch.consensus,
+        consensus_ch.reference
+    )
+
+
+    //gzip or delete intermediate files
 
 
 }

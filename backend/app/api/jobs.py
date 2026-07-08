@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import User, Kit, Job, SampleBatch, JobStatus, KitStatus
+from app.models import User, Kit, Job, SampleBatch, JobStatus, KitStatus, ResultKind
 from app.auth.deps import get_current_user
 from app.services import storage
 from app.services.storage import DEFAULT_PART_SIZE
@@ -191,11 +191,14 @@ def get_results(
     public_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)
 ):
     job = _get_owned_job(public_id, db, current)
-    return [
-        ResultDownload(
-            kind=rf.kind,
-            filename=rf.filename,
-            url=storage.presign_get(rf.object_key, rf.filename),
-        )
-        for rf in job.result_files
-    ]
+    report_kinds = {ResultKind.html_report, ResultKind.consensus_report}
+    out = []
+    for rf in job.result_files:
+        # HTML reports also get an inline view URL so they open in a browser tab.
+        view_url = (storage.presign_get(rf.object_key, inline=True, content_type="text/html")
+                    if rf.kind in report_kinds else None)
+        out.append(ResultDownload(
+            kind=rf.kind, filename=rf.filename,
+            url=storage.presign_get(rf.object_key, rf.filename), view_url=view_url,
+        ))
+    return out

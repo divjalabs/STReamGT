@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 from app.config import settings
 from app.db import SessionLocal
-from app.models import Job, ResultFile, JobStatus, FastqSource, ResultKind, KitStatus
+from app.models import Job, ResultFile, JobStatus, FastqSource, KitStatus
 from app.services import storage, notify
 from app.services.samplesheet import build_input_tsv, BatchRow
 from app.worker.celery_app import celery_app
@@ -179,7 +179,8 @@ def execute_job(job_id: int) -> str:
         with open(input_tsv, "w") as fh:
             fh.write(tsv)
 
-        # 3. Run Nextflow (outputs land at {scratch}/{kit_code}/...).
+        # 3. Run Nextflow (outputs land at {scratch}/{kit_code}/...; the pipeline's REPORT
+        #    process generates the HTML reports, so no separate render step here).
         set_status(JobStatus.running)
         _prepare_awsbatch_env()  # no-op unless nextflow_profile == "awsbatch"
         _run(
@@ -187,6 +188,7 @@ def execute_job(job_id: int) -> str:
                 pipeline_dir=settings.pipeline_dir, input_tsv=input_tsv, run_dir=scratch,
                 profile=settings.nextflow_profile,
                 min_identity=job.min_identity, min_overlap=job.min_overlap,
+                expected_read_number=job.expected_read_number,
             ),
             cwd=scratch, log_path=log_path,
         )
@@ -195,29 +197,7 @@ def execute_job(job_id: int) -> str:
         if not results:
             raise RuntimeError("pipeline produced no result files")
 
-        # 4. Render the R report (best effort — a render failure doesn't fail the job).
-        set_status(JobStatus.rendering)
-        report_html = os.path.join(scratch, f"{kit.kit_code}_report.html")
-        rmd = os.path.join(settings.pipeline_dir, "assets", "report", "Genotype_stat.Rmd")
-        gen = pr.find_result(results, ResultKind.genotypes)
-        pos = pr.find_result(results, ResultKind.positions)
-        summ = pr.find_result(results, ResultKind.reads_summary)
-        rendered = False
-        if gen and pos and summ:
-            try:
-                _run(
-                    pr.build_render_cmd(
-                        rmd_path=rmd, output_html=report_html,
-                        expected_reads=job.expected_read_number,
-                        run_stats=summ, alleles=gen, positions=pos,
-                    ),
-                    cwd=scratch, log_path=log_path,
-                )
-                rendered = os.path.exists(report_html)
-            except Exception:  # noqa: BLE001 — report is best-effort (e.g. no Rscript in the image)
-                rendered = False  # keep results even if the report fails
-
-        # 5. Upload results to S3 and record them.
+        # 4. Upload results to S3 and record them (HTML reports are collected by suffix).
         set_status(JobStatus.uploading)
         prefix = job.storage_prefix or f"results/{kit.kit_code}/{job.public_id}"
         for r in results:
@@ -225,12 +205,6 @@ def execute_job(job_id: int) -> str:
             storage.upload_file(r.path, key)
             db.add(ResultFile(job_id=job.id, kind=r.kind, object_key=key,
                               filename=r.filename, size_bytes=os.path.getsize(r.path)))
-        if rendered:
-            key = f"{prefix}/{os.path.basename(report_html)}"
-            storage.upload_file(report_html, key)
-            db.add(ResultFile(job_id=job.id, kind=ResultKind.html_report, object_key=key,
-                              filename=os.path.basename(report_html),
-                              size_bytes=os.path.getsize(report_html)))
         db.commit()
 
         kit.status = KitStatus.analysed  # a successful job marks the kit analysed

@@ -12,7 +12,7 @@ process CREATE_SUMMARY {
     path ngsfilter_stat
 
     output:
-    path("${kit_id}_reads_summary.csv")
+    path("${kit_id}_reads_summary.csv"), emit: summary
 
 
     script:

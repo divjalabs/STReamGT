@@ -118,4 +118,5 @@ class JobSummary(BaseModel):
 class ResultDownload(BaseModel):
     kind: ResultKind
     filename: str
-    url: str
+    url: str                       # download (attachment)
+    view_url: str | None = None    # inline view in a browser tab (HTML reports only)

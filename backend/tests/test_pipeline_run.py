@@ -14,18 +14,15 @@ def test_build_nextflow_cmd_has_no_outdir_override():
     assert "run" in cmd and cmd[cmd.index("run") + 1].endswith("main.nf")
     assert "--outdir" not in cmd            # rely on pipeline default (kit_id nesting)
     assert "docker" in cmd and "--min_identity" in cmd
+    assert "--expected_read_number" not in cmd  # omitted when not provided
 
 
-def test_build_render_cmd_passes_params():
-    cmd = pr.build_render_cmd(
-        rmd_path="/p/Genotype_stat.Rmd", output_html="/s/report.html",
-        expected_reads=10_000_000, run_stats="/s/sum.csv",
-        alleles="/s/gen.txt", positions="/s/pos.txt",
+def test_build_nextflow_cmd_passes_expected_reads():
+    cmd = pr.build_nextflow_cmd(
+        pipeline_dir="/app/pipeline", input_tsv="/s/input.tsv", run_dir="/s",
+        profile="docker", min_identity=0.9, min_overlap=20, expected_read_number=5_000_000,
     )
-    assert cmd[0] == "Rscript"
-    expr = cmd[2]
-    assert "rmarkdown::render" in expr and "expected_read_number=10000000" in expr
-    assert "alleles='/s/gen.txt'" in expr
+    assert "--expected_read_number" in cmd and "5000000" in cmd
 
 
 def test_collect_results_maps_kinds(tmp_path):
@@ -39,17 +36,22 @@ def test_collect_results_maps_kinds(tmp_path):
     (res / f"{kit}_frequency_of_sequences_by_marker.txt").write_text("x")
     (res / f"{kit}_consensus_genotypes.txt").write_text("x")
     (rep / f"{kit}_reads_summary.csv").write_text("x")
+    (rep / f"{kit}_report.html").write_text("x")
+    (rep / f"{kit}_consensus_report.html").write_text("x")
 
     found = pr.collect_results(str(tmp_path), kit)
     kinds = {r.kind for r in found}
     assert kinds == {
         ResultKind.genotypes, ResultKind.positions, ResultKind.frequency,
         ResultKind.consensus, ResultKind.reads_summary,
+        ResultKind.html_report, ResultKind.consensus_report,
     }
     assert pr.find_result(found, ResultKind.genotypes).endswith("_genotypes.txt")
-    # the consensus file must map to consensus, not genotypes (both end with _genotypes.txt)
+    # files whose suffix overlaps a shorter one must map to the more specific kind
     assert pr.find_result(found, ResultKind.consensus).endswith("_consensus_genotypes.txt")
     assert pr.find_result(found, ResultKind.genotypes).endswith(f"{kit}_genotypes.txt")
+    assert pr.find_result(found, ResultKind.html_report).endswith(f"{kit}_report.html")
+    assert pr.find_result(found, ResultKind.consensus_report).endswith("_consensus_report.html")
 
 
 def test_collect_results_empty_when_missing(tmp_path):

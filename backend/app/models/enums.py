@@ -47,6 +47,7 @@ class ResultKind(str, enum.Enum):
     consensus = "consensus"
     reads_summary = "reads_summary"
     html_report = "html_report"
+    consensus_report = "consensus_report"
     ngsfilter = "ngsfilter"
 
 
