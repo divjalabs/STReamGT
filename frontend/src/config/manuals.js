@@ -9,7 +9,7 @@
 // Changing the ref needs a rebuild; changing manual *content* on that ref does not.
 export const DOCS_REF = import.meta.env.VITE_DOCS_REF || "main";
 
-const RAW = `https://raw.githubusercontent.com/PazhenkovaEA/STReamGT/${DOCS_REF}/docs`;
+const RAW = `https://raw.githubusercontent.com/divjalabs/STReamGT/${DOCS_REF}/docs`;
 
 export const MANUALS = {
   user: {
