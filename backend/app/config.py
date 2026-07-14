@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # --- Security ---
     secret_key: str = "change-me-in-prod"
     access_token_expire_minutes: int = 60 * 24  # 1 day
+    reset_token_expire_minutes: int = 60         # password-reset links expire in 1h
     jwt_algorithm: str = "HS256"
 
     # --- Database ---

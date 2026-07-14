@@ -74,6 +74,80 @@ def test_reject_unknown_tag_columns(client, catalog, admin_token, user_token):
     assert client.post("/api/jobs", json=payload, headers=bearer(user_token)).status_code == 422
 
 
+def _set_status(pub, status):
+    """Force a job into a given status directly (bypassing the worker)."""
+    from app.db import SessionLocal
+    from app.models import Job, JobStatus
+    with SessionLocal() as db:
+        j = db.query(Job).filter_by(public_id=pub).first()
+        j.status = JobStatus(status)
+        db.commit()
+
+
+def test_reject_overlapping_pp_columns(client, catalog, admin_token, user_token):
+    """A PP column may belong to only one batch within a submission."""
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    payload = job_payload(kit_id)
+    payload["batches"][1]["selected_tags"] = ["PP4", "PP5"]  # PP4 already in batch 0
+    r = client.post("/api/jobs", json=payload, headers=bearer(user_token))
+    assert r.status_code == 422 and "another batch" in r.text.lower()
+
+
+def test_pp_cross_check_spans_all_batches(client, catalog, admin_token, user_token, no_enqueue):
+    """Cross-check is N-way: a clash between non-adjacent batches (1 and 3) is caught."""
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    payload = job_payload(kit_id)
+    payload["batches"] = [
+        {"name": "b1", "sample_names_text": "S1", "selected_tags": ["PP1", "PP2"]},
+        {"name": "b2", "sample_names_text": "S2", "selected_tags": ["PP3", "PP4"]},
+        {"name": "b3", "sample_names_text": "S3", "selected_tags": ["PP5", "PP1"]},  # PP1 clashes b1
+    ]
+    r = client.post("/api/jobs", json=payload, headers=bearer(user_token))
+    assert r.status_code == 422 and "PP1" in r.text
+    # A clean 3-way partition is accepted.
+    payload["batches"][2]["selected_tags"] = ["PP5", "PP6"]
+    assert client.post("/api/jobs", json=payload, headers=bearer(user_token)).status_code == 201
+
+
+def test_running_kit_blocks_resubmission(client, catalog, admin_token, user_token, no_enqueue):
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    r1 = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token))
+    assert r1.status_code == 201
+    # second submit while the first is still queued/in-flight -> 409
+    r2 = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token))
+    assert r2.status_code == 409 and "already running" in r2.text.lower()
+    # once the first job reaches a terminal state, submission is allowed again
+    _set_status(r1.json()["public_id"], "failed")
+    assert client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).status_code == 201
+
+
+def test_request_reanalysis_succeeded_only(client, catalog, admin_token, user_token, monkeypatch):
+    sent = []
+    monkeypatch.setattr(
+        "app.api.jobs.notify.send_reanalysis_requested", lambda *a, **k: sent.append(a)
+    )
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    pub = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).json()["public_id"]
+    # not succeeded yet -> 409, no email
+    r = client.post(f"/api/jobs/{pub}/request-reanalysis", json={"reason": "rerun"}, headers=bearer(user_token))
+    assert r.status_code == 409 and not sent
+    # succeeded -> 204 and the admin is emailed
+    _set_status(pub, "succeeded")
+    r = client.post(f"/api/jobs/{pub}/request-reanalysis", json={"reason": "rerun"}, headers=bearer(user_token))
+    assert r.status_code == 204 and len(sent) == 1
+
+
+def test_request_reanalysis_requires_ownership(client, catalog, admin_token, user_token, monkeypatch):
+    monkeypatch.setattr("app.api.jobs.notify.send_reanalysis_requested", lambda *a, **k: None)
+    kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
+    pub = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).json()["public_id"]
+    _set_status(pub, "succeeded")
+    other = register(client, "other@x.com")
+    assert client.post(
+        f"/api/jobs/{pub}/request-reanalysis", json={"reason": "x"}, headers=bearer(other)
+    ).status_code == 403
+
+
 def test_batch_requires_samples(client, catalog, admin_token, user_token):
     kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
     payload = job_payload(kit_id)

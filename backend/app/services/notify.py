@@ -72,6 +72,46 @@ def send_new_user_registered(admin_emails: list[str], new_email: str, organisati
         _send(addr, subject, html, text)
 
 
+def send_reanalysis_requested(
+    admin_emails: list[str], kit_code: str, public_id: str, requester_email: str, reason: str
+) -> None:
+    """Notify admins that a user asked to re-enable an analysed kit for another run."""
+    if not admin_emails:
+        return
+    url = _job_url(public_id)
+    kits_url = f"{settings.frontend_base_url.rstrip('/')}/admin/kits"
+    subject = f"[{settings.app_name}] Reanalysis requested for kit {kit_code}"
+    text = (
+        f"{requester_email} requested reanalysis of kit {kit_code}.\n\n"
+        f"Reason:\n{reason}\n\n"
+        f"Job: {url}\n"
+        f"To allow another run, set the kit status to 'reanalyse' at {kits_url}\n"
+    )
+    html = (
+        f"<p><b>{requester_email}</b> requested reanalysis of kit <b>{kit_code}</b>.</p>"
+        f"<p><b>Reason:</b></p><pre>{reason}</pre>"
+        f'<p><a href="{url}">View the job</a> · '
+        f'<a href="{kits_url}">Manage kits (set to reanalyse)</a></p>'
+    )
+    for addr in admin_emails:
+        _send(addr, subject, html, text)
+
+
+def send_password_reset(to: str, reset_url: str) -> None:
+    subject = f"[{settings.app_name}] Password reset"
+    text = (
+        "We received a request to reset your password.\n\n"
+        f"Reset it here (the link expires in 1 hour): {reset_url}\n\n"
+        "If you didn't request this, you can ignore this email.\n"
+    )
+    html = (
+        "<p>We received a request to reset your password.</p>"
+        f'<p><a href="{reset_url}">Reset your password</a> (the link expires in 1 hour).</p>'
+        "<p>If you didn't request this, you can safely ignore this email.</p>"
+    )
+    _send(to, subject, html, text)
+
+
 def send_job_failed(to: str, kit_code: str, public_id: str, error: str) -> None:
     url = _job_url(public_id)
     subject = f"[{settings.app_name}] Job {kit_code} failed"

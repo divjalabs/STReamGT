@@ -11,6 +11,10 @@ export default function JobDetail() {
   const [results, setResults] = useState([]);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [showReanalysis, setShowReanalysis] = useState(false);
+  const [reason, setReason] = useState("");
+  const [reanalysisSent, setReanalysisSent] = useState(false);
+  const [reErr, setReErr] = useState(null);
 
   const confirm = async (proceed) => {
     setBusy(true);
@@ -18,6 +22,20 @@ export default function JobDetail() {
       setJob(await api.confirmJob(publicId, proceed));
     } catch (e) {
       setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitReanalysis = async () => {
+    setBusy(true);
+    setReErr(null);
+    try {
+      await api.requestReanalysis(publicId, reason);
+      setReanalysisSent(true);
+      setShowReanalysis(false);
+    } catch (e) {
+      setReErr(e.message);
     } finally {
       setBusy(false);
     }
@@ -99,6 +117,39 @@ export default function JobDetail() {
               </li>
             ))}
           </ul>
+
+          <div className="card">
+            <h2>Need another run?</h2>
+            {reErr && <p className="error">{reErr}</p>}
+            {reanalysisSent ? (
+              <p className="muted">✓ Reanalysis requested — an admin will review it.</p>
+            ) : !showReanalysis ? (
+              <button type="button" className="secondary" onClick={() => setShowReanalysis(true)}>
+                Request reanalysis
+              </button>
+            ) : (
+              <>
+                <p className="muted">
+                  This kit is locked as analysed. Explain why it should be re-run — an admin will
+                  be notified.
+                </p>
+                <textarea
+                  rows={4}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Reason for reanalysis…"
+                />
+                <div className="submit-bar">
+                  <button type="button" disabled={busy || !reason.trim()} onClick={submitReanalysis}>
+                    {busy ? "Sending…" : "Send request"}
+                  </button>{" "}
+                  <button type="button" className="secondary" disabled={busy} onClick={() => setShowReanalysis(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </>
       )}
     </div>

@@ -50,6 +50,7 @@ button.link { background: none; color: var(--err); padding: 0; }
   padding: .3rem .55rem; border: 1px solid var(--line); border-radius: 999px;
   font-weight: 500; cursor: pointer; }
 .chip.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+.chip.disabled { opacity: .4; cursor: not-allowed; text-decoration: line-through; }
 .chip input { width: auto; margin: 0; }
 .chip-x { background: none; color: inherit; padding: 0 0 0 .35rem; font-size: 1rem; line-height: 1; }
 .typeahead { position: relative; }

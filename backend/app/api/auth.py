@@ -6,11 +6,24 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_db
 from app.models import User, UserRole
-from app.auth.security import hash_password, verify_password, create_access_token
+from app.auth.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_reset_token,
+    verify_reset_token,
+)
 from app.auth.deps import get_current_user
-from app.schemas.user import UserCreate, UserOut, Token
+from app.schemas.user import (
+    UserCreate,
+    UserOut,
+    Token,
+    ForgotPasswordIn,
+    ResetPasswordIn,
+)
 from app.services import notify
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -61,3 +74,29 @@ def login(
 @router.get("/me", response_model=UserOut)
 def me(current: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(current)
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+def forgot_password(payload: ForgotPasswordIn, db: Session = Depends(get_db)) -> None:
+    """Email a password-reset link. Always 204 — never reveals whether the email exists."""
+    user = db.scalar(select(User).where(User.email == payload.email))
+    if user is not None and user.is_active:
+        token = create_reset_token(user.id)
+        reset_url = f"{settings.frontend_base_url.rstrip('/')}/reset-password?token={token}"
+        try:
+            notify.send_password_reset(user.email, reset_url)
+        except Exception:  # noqa: BLE001 — never leak send failures or block the flow
+            pass
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_password(payload: ResetPasswordIn, db: Session = Depends(get_db)) -> None:
+    """Set a new password from a valid reset token."""
+    user_id = verify_reset_token(payload.token)
+    if user_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired reset link")
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired reset link")
+    user.password_hash = hash_password(payload.new_password)
+    db.commit()

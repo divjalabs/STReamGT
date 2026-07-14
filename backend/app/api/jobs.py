@@ -1,6 +1,7 @@
 """Job submission, tracking, and result downloads."""
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -10,9 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import User, Kit, Job, SampleBatch, JobStatus, KitStatus, ResultKind
+from app.models import User, UserRole, Kit, Job, SampleBatch, JobStatus, KitStatus, ResultKind
 from app.auth.deps import get_current_user
-from app.services import storage
+from app.services import storage, notify
 from app.services.storage import DEFAULT_PART_SIZE
 from app.schemas.job import (
     UploadInitRequest,
@@ -22,13 +23,19 @@ from app.schemas.job import (
     JobConfirm,
     JobOut,
     JobSummary,
+    ReanalysisRequest,
     ResultDownload,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 # Files above this size go multipart; smaller ones get a single presigned PUT.
 MULTIPART_THRESHOLD = DEFAULT_PART_SIZE
+
+# A job in any of these states is finished; anything else counts as "in flight".
+_TERMINAL_STATUSES = {s for s in JobStatus if s.is_terminal}
 
 
 def enqueue_job(job_id: int) -> None:
@@ -100,14 +107,37 @@ def create_job(
             "contact an admin to re-enable analysis (reanalyse).",
         )
 
+    # One job per kit at a time: block resubmission while an earlier job is still in flight.
+    active_job = db.scalar(
+        select(Job.id)
+        .where(Job.kit_id == kit.id, Job.status.notin_(_TERMINAL_STATUSES))
+        .limit(1)
+    )
+    if active_job is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A job for this kit is already running. Wait for it to finish before submitting again.",
+        )
+
     valid_tags = {t.name for t in kit.tag_columns}
+    seen_tags: set[str] = set()
     for b in payload.batches:
-        unknown = set(b.selected_tags) - valid_tags
+        tags = set(b.selected_tags)
+        unknown = tags - valid_tags
         if valid_tags and unknown:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 f"batch {b.name!r} selected unknown tag columns: {sorted(unknown)}",
             )
+        # Each PP column is one physical primer plate — it may belong to only one batch.
+        duplicate = tags & seen_tags
+        if duplicate:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"batch {b.name!r} reuses PP columns already assigned to another batch: "
+                f"{sorted(duplicate)}",
+            )
+        seen_tags |= tags
 
     public_id = str(uuid.uuid4())
     job = Job(
@@ -184,6 +214,30 @@ def confirm_job(
         db.commit()
     db.refresh(job)
     return job
+
+
+@router.post("/{public_id}/request-reanalysis", status_code=status.HTTP_204_NO_CONTENT)
+def request_reanalysis(
+    public_id: str, payload: ReanalysisRequest,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+) -> None:
+    """Ask the admins to re-enable a completed kit for another analysis, with a reason.
+
+    A kit locks to 'analysed' after a job succeeds; only an admin can flip it back to
+    'reanalyse'. This emails that request to the admins (best-effort — no DB record)."""
+    job = _get_owned_job(public_id, db, current)
+    if job.status != JobStatus.succeeded:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Reanalysis can only be requested for a completed (succeeded) job.",
+        )
+    admin_emails = list(db.scalars(select(User.email).where(User.role == UserRole.admin)))
+    try:
+        notify.send_reanalysis_requested(
+            admin_emails, job.kit.kit_code, job.public_id, current.email, payload.reason,
+        )
+    except Exception:  # noqa: BLE001 — never fail the request because email is down
+        logger.exception("Failed to send reanalysis-request email for job %s", job.public_id)
 
 
 @router.get("/{public_id}/results", response_model=list[ResultDownload])

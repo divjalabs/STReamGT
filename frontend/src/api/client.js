@@ -50,6 +50,10 @@ export const api = {
     return res.json();
   },
   me: () => request("/auth/me"),
+  forgotPassword: (email) =>
+    request("/auth/forgot-password", { method: "POST", body: { email } }),
+  resetPassword: (token, newPassword) =>
+    request("/auth/reset-password", { method: "POST", body: { token, new_password: newPassword } }),
 
   // kits
   listKits: () => request("/kits"),
@@ -77,6 +81,8 @@ export const api = {
   getJob: (publicId) => request(`/jobs/${publicId}`),
   confirmJob: (publicId, proceed) =>
     request(`/jobs/${publicId}/confirm`, { method: "POST", body: { proceed } }),
+  requestReanalysis: (publicId, reason) =>
+    request(`/jobs/${publicId}/request-reanalysis`, { method: "POST", body: { reason } }),
   getResults: (publicId) => request(`/jobs/${publicId}/results`),
 
   // uploads

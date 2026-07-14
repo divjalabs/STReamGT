@@ -106,6 +106,11 @@ class JobConfirm(BaseModel):
     proceed: bool = True
 
 
+class ReanalysisRequest(BaseModel):
+    """A user's request to an admin to re-enable an analysed kit, with a reason."""
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class JobSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     public_id: str

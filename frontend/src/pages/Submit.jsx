@@ -22,20 +22,26 @@ export default function Submit() {
   const [fq2, setFq2] = useState({ file: null, ref: "", pct: 0 });
   const [expectedReads, setExpectedReads] = useState(10000000);
   const [batches, setBatches] = useState([newBatch()]);
+  const [jobs, setJobs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
 
   useEffect(() => {
     api.listKits().then(setKits).catch((e) => setErr(e.message));
+    api.listJobs().then(setJobs).catch(() => {});
   }, []);
 
   const kit = kits.find((k) => String(k.id) === String(kitId));
+  // A kit may have only one job in flight; block resubmission until it finishes.
+  const TERMINAL = ["succeeded", "failed"];
+  const kitBusy = !!kit && jobs.some((j) => j.kit_id === kit.id && !TERMINAL.includes(j.status));
 
-  // When a kit is picked, tick all of its tag columns by default in every batch.
+  // When a kit is picked, tick all of its tag columns in the FIRST batch only; later
+  // batches start empty (each PP column can belong to just one batch — see cross-check below).
   useEffect(() => {
     if (!kit) return;
     const all = kit.tag_columns.map((t) => t.name);
-    setBatches((bs) => bs.map((b) => ({ ...b, selectedTags: all })));
+    setBatches((bs) => bs.map((b, i) => ({ ...b, selectedTags: i === 0 ? all : [] })));
   }, [kitId]);
 
   const setBatch = (uid, patch) =>
@@ -60,6 +66,8 @@ export default function Submit() {
     if (!kit) return setErr("Choose a kit.");
     if (kit.status === "analysed")
       return setErr("This kit has already been analysed. Contact an admin to re-enable it (reanalyse).");
+    if (kitBusy)
+      return setErr("A job for this kit is already running. Wait for it to finish before submitting again.");
     setBusy(true);
     try {
       // 1. FASTQ: upload or reference.
@@ -78,9 +86,14 @@ export default function Submit() {
 
       // 2. Batches: upload sample sheets or send pasted text.
       const outBatches = [];
+      const seenTags = new Set();
       for (const b of batches) {
         if (!b.name) throw new Error("Every batch needs a name.");
         if (b.selectedTags.length === 0) throw new Error(`Batch ${b.name}: pick at least one tag column.`);
+        const dup = b.selectedTags.filter((t) => seenTags.has(t));
+        if (dup.length)
+          throw new Error(`Batch ${b.name}: PP column(s) ${dup.join(", ")} are already used in another batch.`);
+        b.selectedTags.forEach((t) => seenTags.add(t));
         const out = { name: b.name, selected_tags: b.selectedTags };
         if (b.sampleMode === "upload") {
           if (!b.sampleFile) throw new Error(`Batch ${b.name}: upload a sample sheet.`);
@@ -129,6 +142,9 @@ export default function Submit() {
           {kit && kit.status === "analysed" && (
             <p className="error">⚠️ Each kit can be analysed only once. This kit is already analysed — contact an admin to re-enable it (reanalyse).</p>
           )}
+          {kit && kitBusy && (
+            <p className="error">⚠️ A job for this kit is already running. Wait for it to finish before submitting again.</p>
+          )}
         </section>
 
         <section className="card">
@@ -155,7 +171,11 @@ export default function Submit() {
           </label>
         </section>
 
-        {batches.map((b, i) => (
+        {batches.map((b, i) => {
+          const usedElsewhere = new Set(
+            batches.filter((x) => x.uid !== b.uid).flatMap((x) => x.selectedTags)
+          );
+          return (
           <section className="card" key={b.uid}>
             <div className="row">
               <h2>Sample batch {i + 1}</h2>
@@ -184,23 +204,41 @@ export default function Submit() {
               {!kit ? (
                 <p className="muted">Choose a kit to see its tag columns.</p>
               ) : (
-                <div className="chips">
-                  {kit.tag_columns.map((t) => (
-                    <label key={t.name} className={`chip ${b.selectedTags.includes(t.name) ? "on" : ""}`}>
-                      <input type="checkbox" checked={b.selectedTags.includes(t.name)} onChange={() => toggleTag(b.uid, t.name)} />
-                      {t.name}
-                    </label>
-                  ))}
-                </div>
+                <>
+                  {batches.length > 1 && (
+                    <p className="muted">Each PP column belongs to a single batch — columns already used in another batch are disabled here.</p>
+                  )}
+                  <div className="chips">
+                    {kit.tag_columns.map((t) => {
+                      const taken = usedElsewhere.has(t.name);
+                      return (
+                        <label
+                          key={t.name}
+                          className={`chip ${b.selectedTags.includes(t.name) ? "on" : ""}${taken ? " disabled" : ""}`}
+                          title={taken ? "Already assigned to another batch" : undefined}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={b.selectedTags.includes(t.name)}
+                            disabled={taken}
+                            onChange={() => toggleTag(b.uid, t.name)}
+                          />
+                          {t.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </fieldset>
           </section>
-        ))}
+          );
+        })}
 
-        <button type="button" className="secondary" onClick={() => setBatches((bs) => [...bs, { ...newBatch(), selectedTags: kit ? kit.tag_columns.map((t) => t.name) : [] }])}>+ add another sample batch</button>
+        <button type="button" className="secondary" onClick={() => setBatches((bs) => [...bs, newBatch()])}>+ add another sample batch</button>
 
         <div className="submit-bar">
-          <button type="submit" disabled={busy || kit?.status === "analysed"}>{busy ? "Submitting…" : "Submit analysis"}</button>
+          <button type="submit" disabled={busy || kit?.status === "analysed" || kitBusy}>{busy ? "Submitting…" : "Submit analysis"}</button>
         </div>
       </form>
     </div>
