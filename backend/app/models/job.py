@@ -33,6 +33,11 @@ class Job(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     kit_id: Mapped[int] = mapped_column(ForeignKey("kits.id"), index=True, nullable=False)
 
+    # Optional project the job's samples are ingested into (animal/matching layer).
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), index=True)
+    default_population_id: Mapped[int | None] = mapped_column(ForeignKey("populations.id"))
+    default_study_id: Mapped[int | None] = mapped_column(ForeignKey("studies.id"))
+
     status: Mapped[JobStatus] = mapped_column(
         SAEnum(JobStatus, name="job_status"), default=JobStatus.queued, index=True, nullable=False
     )

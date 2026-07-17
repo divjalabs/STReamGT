@@ -1,9 +1,16 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api/client.js";
 import { useAuth } from "../auth.jsx";
 
 export default function Home() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const [projects, setProjects] = useState(null);
+
+  useEffect(() => {
+    api.listProjects().then(setProjects).catch(() => setProjects([]));
+  }, []);
 
   return (
     <div className="container">
@@ -24,6 +31,25 @@ export default function Home() {
         <Link to="/jobs"><button className="secondary">My analyses</button></Link>
         <Link to="/kits"><button className="secondary">My kits</button></Link>
       </div>
+
+      <div className="section-head" style={{ marginTop: "1.8rem" }}>
+        <h2>My projects</h2>
+        <Link to="/projects">View all →</Link>
+      </div>
+      {projects === null ? (
+        <p className="muted">Loading…</p>
+      ) : projects.length === 0 ? (
+        <p className="muted">No projects yet. <Link to="/projects">Create your first project</Link>.</p>
+      ) : (
+        <div className="project-grid">
+          {projects.slice(0, 8).map((p) => (
+            <Link key={p.id} to={`/projects/${p.id}`} className="card project-card">
+              <strong>{p.name}</strong>
+              {p.organisation && <span className="muted small">{p.organisation}</span>}
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

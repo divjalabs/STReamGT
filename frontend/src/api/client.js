@@ -85,6 +85,74 @@ export const api = {
     request(`/jobs/${publicId}/request-reanalysis`, { method: "POST", body: { reason } }),
   getResults: (publicId) => request(`/jobs/${publicId}/results`),
 
+  // projects (animal/sample store)
+  listProjects: () => request("/projects"),
+  getProject: (id) => request(`/projects/${id}`),
+  createProject: (payload) => request("/projects", { method: "POST", body: payload }),
+  deleteProject: (id) => request(`/projects/${id}`, { method: "DELETE" }),
+  shareProject: (id, email, role) =>
+    request(`/projects/${id}/share`, { method: "POST", body: { email, role } }),
+  listProjectAccess: (id) => request(`/projects/${id}/access`),
+  unshareProject: (id, userId) => request(`/projects/${id}/share/${userId}`, { method: "DELETE" }),
+  // import / export
+  importGenotypes: (id, file) => {
+    const fd = new FormData(); fd.append("file", file);
+    return request(`/projects/${id}/import/genotypes`, { method: "POST", form: fd });
+  },
+  importProjectJson: (file) => {
+    const fd = new FormData(); fd.append("file", file);
+    return request("/projects/import", { method: "POST", form: fd });
+  },
+  listPopulations: (id) => request(`/projects/${id}/populations`),
+  createPopulation: (id, payload) =>
+    request(`/projects/${id}/populations`, { method: "POST", body: payload }),
+  deletePopulation: (id, popId, { reassign_to, delete_samples } = {}) => {
+    const q = new URLSearchParams();
+    if (reassign_to != null) q.set("reassign_to", reassign_to);
+    if (delete_samples) q.set("delete_samples", "true");
+    const qs = q.toString();
+    return request(`/projects/${id}/populations/${popId}${qs ? `?${qs}` : ""}`, { method: "DELETE" });
+  },
+  listStudies: (id) => request(`/projects/${id}/studies`),
+  createStudy: (id, payload) =>
+    request(`/projects/${id}/studies`, { method: "POST", body: payload }),
+  getStudy: (studyId) => request(`/studies/${studyId}`),
+  deleteStudy: (studyId) => request(`/studies/${studyId}`, { method: "DELETE" }),
+  attachKit: (studyId, kitId) =>
+    request(`/studies/${studyId}/kits/${kitId}`, { method: "POST" }),
+  detachKit: (studyId, kitId) =>
+    request(`/studies/${studyId}/kits/${kitId}`, { method: "DELETE" }),
+  listSampleTypes: (id) => request(`/projects/${id}/sample-types`),
+  // samples
+  getPopulation: (populationId) => request(`/populations/${populationId}`),
+  listPopulationSamples: (populationId) => request(`/populations/${populationId}/samples`),
+  getSample: (sampleId) => request(`/samples/${sampleId}`),
+  patchSample: (sampleId, body) => request(`/samples/${sampleId}`, { method: "PATCH", body }),
+  getSampleReplicates: (sampleId) => request(`/samples/${sampleId}/replicates`),
+  getSamplePlotData: (sampleId, markers) =>
+    request(`/samples/${sampleId}/plot-data${markers && markers.length ? `?markers=${markers.join(",")}` : ""}`),
+  listStudySamples: (studyId) => request(`/studies/${studyId}/samples`),
+  listKitSamples: (kitId) => request(`/kits/${kitId}/samples`),
+  listProjectSamples: (projectId) => request(`/projects/${projectId}/samples`),
+  // consensus (M2)
+  rerunSampleConsensus: (sampleId) =>
+    request(`/samples/${sampleId}/rerun-consensus`, { method: "POST" }),
+  rerunPopulationConsensus: (populationId) =>
+    request(`/populations/${populationId}/rerun-consensus`, { method: "POST" }),
+  editConsensus: (consensusId, body) =>
+    request(`/consensus/${consensusId}`, { method: "PATCH", body }),
+  lockConsensus: (consensusId) => request(`/consensus/${consensusId}/lock`, { method: "POST" }),
+  unlockConsensus: (consensusId) => request(`/consensus/${consensusId}/unlock`, { method: "POST" }),
+  // matching (M3)
+  rerunMatch: (populationId) =>
+    request(`/populations/${populationId}/rerun-match`, { method: "POST" }),
+  listSubgroups: (populationId) => request(`/populations/${populationId}/subgroups`),
+  listSupergroups: (populationId) => request(`/populations/${populationId}/supergroups`),
+  listMatches: (populationId) => request(`/populations/${populationId}/matches`),
+  getMatchingSettings: (populationId) => request(`/populations/${populationId}/matching-settings`),
+  putMatchingSettings: (populationId, body) =>
+    request(`/populations/${populationId}/matching-settings`, { method: "PUT", body }),
+
   // uploads
   initUpload: (filename, size, purpose) =>
     request("/jobs/uploads", { method: "POST", body: { filename, size, purpose } }),
@@ -94,6 +162,30 @@ export const api = {
       body: { key, upload_id: uploadId, parts },
     }),
 };
+
+// Download a project export (auth-gated) and trigger a browser save.
+export async function downloadExport(projectId, kind) {
+  const token = getToken();
+  const res = await fetch(`/api/projects/${projectId}/export/${kind}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let detail;
+    try { detail = (await res.json()).detail; } catch { detail = res.statusText; }
+    throw new Error(typeof detail === "string" ? detail : "export failed");
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("Content-Disposition") || "";
+  const m = cd.match(/filename="?([^"]+)"?/);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = m ? m[1] : `${kind}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 // Upload a File directly to S3. Returns the object key to reference in the job.
 // onProgress(fraction) is called 0..1. Requires the bucket's CORS to expose ETag.

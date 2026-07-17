@@ -8,6 +8,10 @@ Runs after MERGE_ALLELES on the whole-kit outputs. Two stages:
 Adapted and cleaned from the monolithic callAllelegit.py (lines ~315-415): vectorized allele
 naming + replicate counting, no deprecated DataFrame.append, divide-by-zero guards, single-kit
 (no tab_dirs loop), no R graphing.
+
+Success (SuccessRate), ADO/ADORate and QualityIndex follow the legacy MisBase Access DB
+(module mConsensusGenotypes, CreateConsensusTableNGS): they are amplification-based, not
+allele-count-based. See docs/consensus-db-vs-pipeline.md.
 """
 import argparse
 import json
@@ -37,6 +41,7 @@ CONSENSUS_COLUMNS = [
     "Sample", "Mrkr", "Al1", "Al2", "Al3", "Al4", "NcnfA1", "NCnfA2",
     "ConfirmedAlleles", "UnconfirmedAlleles", "NAmp", "NAmpOK", "Success",
     "ADO", "ADORate", "QualityIndex",
+    "FalseAlleles", "ReadsPerAmp", "SD_ReadsPerAmp",
 ]
 REFERENCE_COLUMNS = ["Marker", "Sequence", "Length", "Variant", "AlleleName", "N"]
 
@@ -77,12 +82,75 @@ def build_reference_alleles(frequency, reference_alleles_path):
     return freq[REFERENCE_COLUMNS]
 
 
+AMP_KEYS = ["Plate", "Position"]  # one amplification = one PCR well (DB: Sample x Run x TagCombo)
+
+
 def replicate_counts(positions):
-    """NAmp = number of replicate plates per (Sample_Name, Marker), from the positions table."""
+    """NAmp = number of amplifications attempted per (Sample_Name, Marker).
+
+    Matches the DB's N_Amps: the total number of PCR wells (Plate x Position) the
+    sample was run in for that marker, from the positions table. This includes wells
+    that produced no called allele (failed amplifications), so it is the correct
+    denominator for SuccessRate and QualityIndex."""
     if positions.empty:
         return pd.DataFrame(columns=["Sample_Name", "Marker", "NAmp"])
-    return (positions.groupby(["Sample_Name", "Marker"])["Plate"]
-            .nunique().reset_index().rename(columns={"Plate": "NAmp"}))
+    keys = [k for k in AMP_KEYS if k in positions.columns] or ["Plate"]
+    pos = positions.copy()
+    pos["_amp"] = pos[keys].astype(str).agg("|".join, axis=1)
+    return (pos.groupby(["Sample_Name", "Marker"])["_amp"]
+            .nunique().reset_index().rename(columns={"_amp": "NAmp"}))
+
+
+def amplification_metrics(group, clean_alleles, genotype_set, is_heterozygous, namp):
+    """Amplification-based success / dropout / quality, matching the DB CreateConsensusTableNGS.
+
+    An amplification is one PCR well (Plate x Position). Within a well, an allele is
+    *usable* if it is clean (flag == "") or flagged but the same allele is seen clean
+    elsewhere at this Sample x Marker (clean_alleles) -- the DB's flag-confirmation rule.
+
+      N_SuccessAmps  amps with >= 1 usable allele
+      N_HetAmps      amps with exactly 2 usable alleles
+      perfect_amps   amps whose usable-allele set == the consensus genotype
+      SuccessRate    100 * N_SuccessAmps / N_Amps
+      QualityIndex   perfect_amps / N_Amps
+      ADO            (het consensus only) N_SuccessAmps - N_HetAmps; 0 otherwise
+      ADO_Rate       ADO / N_SuccessAmps
+
+    ReadsPerAmp / SD_ReadsPerAmp are the mean and SD of total Read_Count per successful
+    amplification (over usable-allele rows). The DB's exact formula was not recoverable
+    (compressed VBA); this is the faithful reading of the column names/types.
+    """
+    keys = [k for k in AMP_KEYS if k in group.columns] or ["Plate"]
+    has_reads = "Read_Count" in group.columns
+    n_success = n_het = n_perfect = 0
+    amp_total = 0
+    amp_reads = []                                   # total reads of each successful amp's usable alleles
+    for _, amp in group.groupby(keys, dropna=False):
+        amp_total += 1
+        usable_rows = amp[amp["AlleleName"].isin(clean_alleles)]
+        usable = set(usable_rows["AlleleName"])
+        if not usable:                               # amp produced nothing confirmable
+            continue
+        n_success += 1
+        if has_reads:
+            amp_reads.append(float(pd.to_numeric(usable_rows["Read_Count"], errors="coerce").sum()))
+        if len(usable) == 2:
+            n_het += 1
+        if usable == genotype_set:                   # amp reproduced the whole consensus genotype
+            n_perfect += 1
+
+    n_amps = max(int(namp), amp_total)               # positions is authoritative; guard vs. inconsistency
+    success_rate = 100 * n_success / n_amps if n_amps else 0
+    quality_index = n_perfect / n_amps if n_amps else 0
+    ado = (n_success - n_het) if is_heterozygous else 0
+    ado = max(ado, 0)
+    ado_rate = ado / n_success if n_success else 0
+    reads = pd.Series(amp_reads, dtype=float)
+    reads_per_amp = int(round(reads.mean())) if len(reads) else 0
+    sd_reads = round(float(reads.std(ddof=1)), 4) if len(reads) > 1 else 0.0  # sample SD; 0 if <2 amps
+    return {"NAmp": n_amps, "NAmpOK": n_success, "Success": success_rate,
+            "ADO": ado, "ADORate": ado_rate, "QualityIndex": quality_index,
+            "ReadsPerAmp": reads_per_amp, "SD_ReadsPerAmp": sd_reads}
 
 
 def consensus_for_group(sample, marker, group, namp, thr_homo, thr_hetero):
@@ -92,7 +160,7 @@ def consensus_for_group(sample, marker, group, namp, thr_homo, thr_hetero):
     counts = dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
     threshold = thr_hetero if len(counts) > 1 else thr_homo
 
-    unconfirmed, confirmed, consensus = [], {}, []
+    unconfirmed, confirmed, consensus, clean_alleles = [], {}, [], set()
     for allele in counts:
         rows = group[group["AlleleName"] == allele]
         n_unflagged = int((rows["flag"] == "").sum())
@@ -100,23 +168,21 @@ def consensus_for_group(sample, marker, group, namp, thr_homo, thr_hetero):
         if n_unflagged == 0:                         # every replicate flagged -> unconfirmed
             unconfirmed.append(allele)
             continue
+        clean_alleles.add(allele)                    # has a clean copy -> confirms flagged copies in any amp
         if n_flagged > 0:                            # flagged AND clean replicates -> confirmed-but-flagged
             confirmed[allele] = n_flagged            # record how many replicates were flagged
-        (consensus if len(rows) > threshold else unconfirmed).append(allele)
+        # DB semantics: threshold = "repeats REQUIRED to accept" (stblSettings.AlleleRepeatsAccept*),
+        # so accept at >= threshold (an allele seen `threshold` times is accepted).
+        (consensus if len(rows) >= threshold else unconfirmed).append(allele)
 
-    # Amplification success / allelic dropout metrics.
-    if len(consensus) == 2:
-        ado = abs(counts[consensus[0]] - counts[consensus[1]])
-        namp_ok = namp - ado
-    elif len(consensus) == 1:
-        ado = 0
-        namp_ok = counts[consensus[0]]
-    else:
-        ado = 0
-        namp_ok = 0
-    ado_rate = ado / namp_ok if namp_ok else 0
-    quality_index = namp_ok / namp if namp else 0
-    success = quality_index * 100
+    # Amplification-based metrics against the accepted genotype (Al1, Al2); see the DB.
+    genotype_set = set(consensus[:2])
+    metrics = amplification_metrics(group, clean_alleles, genotype_set,
+                                    is_heterozygous=len(consensus) >= 2, namp=namp)
+
+    # FalseAlleles (DB): observation counts of the 3rd-5th most frequent alleles (past the top-2).
+    # counts is already ordered most-frequent-first.
+    false_alleles = sum(list(counts.values())[2:5])
 
     consensus = (consensus + ["", "", "", ""])[:4]   # pad to Al1..Al4
     ncnf1 = confirmed.get(consensus[0], "") if consensus[0] else ""
@@ -128,8 +194,8 @@ def consensus_for_group(sample, marker, group, namp, thr_homo, thr_hetero):
         "NcnfA1": ncnf1, "NCnfA2": ncnf2,
         "ConfirmedAlleles": ";".join(confirmed.keys()),
         "UnconfirmedAlleles": ";".join(unconfirmed),
-        "NAmp": namp, "NAmpOK": namp_ok, "Success": success,
-        "ADO": ado, "ADORate": ado_rate, "QualityIndex": quality_index,
+        "FalseAlleles": false_alleles,
+        **metrics,
     }
 
 

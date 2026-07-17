@@ -25,11 +25,11 @@
         "type": 3
       },
       "seed": 1106999742,
-      "version": 1373,
-      "versionNonce": 574385022,
+      "version": 1375,
+      "versionNonce": 2108162476,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1773936295099,
+      "updated": 1783498860804,
       "link": null,
       "locked": false
     },
@@ -455,20 +455,20 @@
       "index": "aA",
       "roundness": null,
       "seed": 317941475,
-      "version": 321,
-      "versionNonce": 759821069,
+      "version": 489,
+      "versionNonce": 787625004,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1772568637197,
+      "updated": 1783499277828,
       "link": null,
       "locked": false,
-      "text": "user gets an access to register\n (subscription for 1 month?)",
+      "text": "user gets an access to kits via\nnumber when approved by admin",
       "fontSize": 20,
       "fontFamily": 5,
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "user gets an access to register\n (subscription for 1 month?)",
+      "originalText": "user gets an access to kits via number when approved by admin",
       "autoResize": false,
       "lineHeight": 1.25
     },
@@ -2003,11 +2003,11 @@
       "index": "ap",
       "roundness": null,
       "seed": 1963593698,
-      "version": 549,
-      "versionNonce": 2127377122,
+      "version": 579,
+      "versionNonce": 811557396,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1772875728733,
+      "updated": 1783440647069,
       "link": null,
       "locked": false,
       "text": "* merge the results from all loci",
@@ -3814,10 +3814,10 @@
     {
       "id": "gBQIkfjXcN7m0WPuR103g",
       "type": "text",
-      "x": 1661.7108419759327,
-      "y": 461.17934082084867,
-      "width": 1235.6395263671875,
-      "height": 735,
+      "x": 1624.3328053254154,
+      "y": 461.05212356272943,
+      "width": 1822.126708984375,
+      "height": 1785,
       "angle": 0,
       "strokeColor": "#e03131",
       "backgroundColor": "#ffec99",
@@ -3831,20 +3831,20 @@
       "index": "b0g",
       "roundness": null,
       "seed": 2125513058,
-      "version": 1935,
-      "versionNonce": 921137580,
+      "version": 4693,
+      "versionNonce": 1278696236,
       "isDeleted": false,
       "boundElements": [],
-      "updated": 1783439574622,
+      "updated": 1783608956795,
       "link": null,
       "locked": false,
-      "text": "next: \n-diagnostic data dashboard:\nnumber and % of reads discarded at each step\nnumber and % of reads different types of ngsfilter error\nnumber  of reads and alleles per locus/per replicate\nPlot with read counts per position with +- controls marked - adapted Genotype_stat.Rmd\n\n- consensus genotype without naming\n\n- Figure out, how to mark controls in admin mode directly on a plate.\n\n- Add user manuals for admin and for regular user to the home page\n- Add ? buttons with some instructions where needed\n\n\n\n\n\n\n\n",
+      "text": "next: \n\n- positive and negative controls: \n            Admin marks positions when registering the kit\n             Add controls statistics to the run QC report\n             ! Controls have to be excluded from the error rate estimates\n\n- Cross check primer plates - user cannot tick the same primer plates for different batches\n- !!!! if the job is running, you cannot submit the same kit\n\n- Consensus:\n            User can edit consensus file while checking the plots, edited genotypes are marked\n            Add table with genotype info, unaccepted alleles and stats\n            name page \"Sample report\"\n            Add per sample stats derived from consensus table\n\n- Add ? buttons with some instructions where needed\n- Request reanalysis button - send a message to admin with explanation of the reason\n- fix email notification - divja domain should be added as trusted in amazon\n\n\n- Add sex id - male or female\n\n- Mark stutters on the plots after consensus\n\nUsers: \n\n     Password restore for users\n      Ideally, we don't want to manuallu approve users.dr\n\n- Check the primers catalogue, all of the sets\n\n- Data storage - check for Glacier, and how many it costs \n- Look for reads for this kit on our server (make a button?) - or maybe add path to the kit data if reads are stored at the server?\n\nMake a glossary for terminology (sample batch, kit etc)\n\nCheck regulations for personal data database, make Terms and Conditions if needed\n\nPlan better DB architecture, improve kit tracking sistem\n\nSample mathing system - add unique ids to the samples (because users can add duplicated sample names)\n                               start with similarity matrix among all the samples from one project, then check the \n                                pairwise if similar enough. \n                                ADO are more often then false alleles. \n\n\n\n\n\n",
       "fontSize": 28,
       "fontFamily": 5,
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "next: \n-diagnostic data dashboard:\nnumber and % of reads discarded at each step\nnumber and % of reads different types of ngsfilter error\nnumber  of reads and alleles per locus/per replicate\nPlot with read counts per position with +- controls marked - adapted Genotype_stat.Rmd\n\n- consensus genotype without naming\n\n- Figure out, how to mark controls in admin mode directly on a plate.\n\n- Add user manuals for admin and for regular user to the home page\n- Add ? buttons with some instructions where needed\n\n\n\n\n\n\n\n",
+      "originalText": "next: \n\n- positive and negative controls: \n            Admin marks positions when registering the kit\n             Add controls statistics to the run QC report\n             ! Controls have to be excluded from the error rate estimates\n\n- Cross check primer plates - user cannot tick the same primer plates for different batches\n- !!!! if the job is running, you cannot submit the same kit\n\n- Consensus:\n            User can edit consensus file while checking the plots, edited genotypes are marked\n            Add table with genotype info, unaccepted alleles and stats\n            name page \"Sample report\"\n            Add per sample stats derived from consensus table\n\n- Add ? buttons with some instructions where needed\n- Request reanalysis button - send a message to admin with explanation of the reason\n- fix email notification - divja domain should be added as trusted in amazon\n\n\n- Add sex id - male or female\n\n- Mark stutters on the plots after consensus\n\nUsers: \n\n     Password restore for users\n      Ideally, we don't want to manuallu approve users.dr\n\n- Check the primers catalogue, all of the sets\n\n- Data storage - check for Glacier, and how many it costs \n- Look for reads for this kit on our server (make a button?) - or maybe add path to the kit data if reads are stored at the server?\n\nMake a glossary for terminology (sample batch, kit etc)\n\nCheck regulations for personal data database, make Terms and Conditions if needed\n\nPlan better DB architecture, improve kit tracking sistem\n\nSample mathing system - add unique ids to the samples (because users can add duplicated sample names)\n                               start with similarity matrix among all the samples from one project, then check the \n                                pairwise if similar enough. \n                                ADO are more often then false alleles. \n\n\n\n\n\n",
       "autoResize": true,
       "lineHeight": 1.25
     },
@@ -3919,43 +3919,6 @@
       "verticalAlign": "top",
       "containerId": null,
       "originalText": "possibly multiple AP",
-      "autoResize": true,
-      "lineHeight": 1.25
-    },
-    {
-      "id": "ft4bjcFRMAoCO7lnLSX3j",
-      "type": "text",
-      "x": 2303.5676582304845,
-      "y": 327.0956937053546,
-      "width": 549.4717407226562,
-      "height": 140,
-      "angle": 0,
-      "strokeColor": "#f08c00",
-      "backgroundColor": "#ffec99",
-      "fillStyle": "solid",
-      "strokeWidth": 1,
-      "strokeStyle": "solid",
-      "roughness": 1,
-      "opacity": 100,
-      "groupIds": [],
-      "frameId": null,
-      "index": "b0k",
-      "roundness": null,
-      "seed": 527197310,
-      "version": 439,
-      "versionNonce": 629577516,
-      "isDeleted": false,
-      "boundElements": [],
-      "updated": 1783439470194,
-      "link": null,
-      "locked": false,
-      "text": "TODO later:\n- function to check inputs in callAllele.py\n\n",
-      "fontSize": 28,
-      "fontFamily": 5,
-      "textAlign": "left",
-      "verticalAlign": "top",
-      "containerId": null,
-      "originalText": "TODO later:\n- function to check inputs in callAllele.py\n\n",
       "autoResize": true,
       "lineHeight": 1.25
     },
@@ -4188,10 +4151,10 @@
     {
       "id": "vpl3fTsOFr0v3_08azbnN",
       "type": "text",
-      "x": 1463.3724332018592,
-      "y": 107.49204903751735,
-      "width": 860.41943359375,
-      "height": 125,
+      "x": 609.9109830267557,
+      "y": 1221.8322029099581,
+      "width": 1038.3192138671875,
+      "height": 225,
       "angle": 0,
       "strokeColor": "#1e1e1e",
       "backgroundColor": "transparent",
@@ -4205,20 +4168,20 @@
       "index": "b0r",
       "roundness": null,
       "seed": 658298644,
-      "version": 315,
-      "versionNonce": 1008627860,
+      "version": 941,
+      "versionNonce": 712768300,
       "isDeleted": false,
       "boundElements": null,
-      "updated": 1783437954587,
+      "updated": 1783605209229,
       "link": null,
       "locked": false,
-      "text": "! multiple species per kit/library are not allowed.\nIf you have more than one species per library, run the pipeline twice.\n\nLimited number of the queries - when the kit status \"analysed\", user can reanalye it only\nafter admin approval ",
+      "text": "! multiple species (markers set) per kit/library are not allowed.\n If you have more than one species per library, run the pipeline twice.\n\n- Limited number of the queries per kit - when the kit status \"analysed\", user can reanalyse it only\nafter admin approval \n\n-Very important to check for all species: sex reference have to be formatted as in UA_primers X:seq/Y:seq\n\n- FASTQ files are deleted from the storage in 2 weeks. ",
       "fontSize": 20,
       "fontFamily": 5,
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "! multiple species per kit/library are not allowed.\nIf you have more than one species per library, run the pipeline twice.\n\nLimited number of the queries - when the kit status \"analysed\", user can reanalye it only\nafter admin approval ",
+      "originalText": "! multiple species (markers set) per kit/library are not allowed.\n If you have more than one species per library, run the pipeline twice.\n\n- Limited number of the queries per kit - when the kit status \"analysed\", user can reanalyse it only\nafter admin approval \n\n-Very important to check for all species: sex reference have to be formatted as in UA_primers X:seq/Y:seq\n\n- FASTQ files are deleted from the storage in 2 weeks. ",
       "autoResize": true,
       "lineHeight": 1.25
     },
@@ -4247,6 +4210,368 @@
       "isDeleted": false,
       "boundElements": [],
       "updated": 1783439604078,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0.008439413383712235,
+          1.0127296060563253
+        ],
+        [
+          1.1983967004998703,
+          4.017160770689941
+        ],
+        [
+          4.447570853263642,
+          11.14846508000295
+        ],
+        [
+          5.6459675537637395,
+          14.144456831252796
+        ],
+        [
+          7.485759671432561,
+          17.69744986583362
+        ],
+        [
+          9.03861173405221,
+          20.828472231224282
+        ],
+        [
+          10.650539690358528,
+          24.58401118701636
+        ],
+        [
+          14.313245098928746,
+          34.64379194050878
+        ],
+        [
+          15.503202386044904,
+          37.32752539655792
+        ],
+        [
+          16.32182548427363,
+          39.72431879755783
+        ],
+        [
+          16.904145007756142,
+          42.230824572547135
+        ],
+        [
+          17.1826456494216,
+          42.92285647001893
+        ],
+        [
+          17.241721543108042,
+          42.80470468264565
+        ],
+        [
+          17.267039783259634,
+          41.35312558063168
+        ],
+        [
+          17.267039783259634,
+          39.31922695513532
+        ],
+        [
+          15.899854815083472,
+          34.78726196803342
+        ],
+        [
+          15.899854815083472,
+          28.87967259937176
+        ],
+        [
+          15.899854815083472,
+          26.550394505442284
+        ],
+        [
+          15.899854815083472,
+          23.444690380203042
+        ],
+        [
+          15.899854815083472,
+          19.63851494410818
+        ],
+        [
+          15.899854815083472,
+          16.465295511798445
+        ],
+        [
+          16.203673696900523,
+          12.937620717369043
+        ],
+        [
+          17.478025117854713,
+          9.35087002925303
+        ],
+        [
+          19.1996654481502,
+          6.05949880957013
+        ],
+        [
+          21.444549408241755,
+          2.2533233734752685
+        ],
+        [
+          23.37717507313255,
+          -0.38821301565485555
+        ],
+        [
+          24.178919344593623,
+          -1.4600185153977918
+        ],
+        [
+          24.879390655449242,
+          -2.71749110958433
+        ],
+        [
+          25.51234665923448,
+          -3.6964630621054084
+        ],
+        [
+          26.094666182716765,
+          -4.109994317911742
+        ],
+        [
+          26.668546292815336,
+          -4.202827865133543
+        ],
+        [
+          26.9808045880161,
+          -4.498207333566654
+        ],
+        [
+          27.27618405644921,
+          -4.78514738861594
+        ],
+        [
+          27.27618405644921,
+          -4.78514738861594
+        ]
+      ],
+      "pressures": [],
+      "simulatePressure": true,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "s-BOMmvDWhTe1y0MnHhts",
+      "type": "freedraw",
+      "x": 1093.1774604390748,
+      "y": 838.7874359153644,
+      "width": 30.002114579417366,
+      "height": 57.88593639950045,
+      "angle": 0,
+      "strokeColor": "#ff8787",
+      "backgroundColor": "#ffec99",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "index": "b0v",
+      "roundness": null,
+      "seed": 1823661740,
+      "version": 141,
+      "versionNonce": 643698476,
+      "isDeleted": false,
+      "boundElements": [],
+      "updated": 1783440650002,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0.008439413383712235,
+          0.7511077911584607
+        ],
+        [
+          1.0464872595914585,
+          2.523384601756902
+        ],
+        [
+          2.8187640701899,
+          4.9961327232109625
+        ],
+        [
+          5.4012245656335836,
+          9.22427882849604
+        ],
+        [
+          8.025882127996056,
+          13.52837965423521
+        ],
+        [
+          10.009144273189577,
+          17.072933275432206
+        ],
+        [
+          12.017724658534462,
+          21.081654632738378
+        ],
+        [
+          13.545258481002747,
+          24.55025353348117
+        ],
+        [
+          14.61706398074557,
+          27.039880481702767
+        ],
+        [
+          15.570717693115284,
+          28.668687264776622
+        ],
+        [
+          16.18679487013287,
+          29.900841618811796
+        ],
+        [
+          16.347143724425223,
+          31.749073149864557
+        ],
+        [
+          16.575007885787727,
+          31.95161907107581
+        ],
+        [
+          16.68472025977735,
+          31.976937311227175
+        ],
+        [
+          16.726917326696366,
+          31.521208988501826
+        ],
+        [
+          16.726917326696366,
+          30.635070583202605
+        ],
+        [
+          16.414659031495603,
+          28.128564808213355
+        ],
+        [
+          16.10240073629484,
+          26.491318611755673
+        ],
+        [
+          16.10240073629484,
+          24.45741998625931
+        ],
+        [
+          16.10240073629484,
+          22.423521360762948
+        ],
+        [
+          16.10240073629484,
+          19.92545499915741
+        ],
+        [
+          16.10240073629484,
+          17.300797436794824
+        ],
+        [
+          16.10240073629484,
+          13.739364988830289
+        ],
+        [
+          16.10240073629484,
+          8.945778186830466
+        ],
+        [
+          16.10240073629484,
+          4.008721357306172
+        ],
+        [
+          16.3809013779603,
+          -0.32069770858447555
+        ],
+        [
+          17.368312743865317,
+          -4.658556187858949
+        ],
+        [
+          18.836770672646935,
+          -9.333991202485436
+        ],
+        [
+          21.0563363925869,
+          -14.262608618626018
+        ],
+        [
+          23.360296246364896,
+          -18.203814668861696
+        ],
+        [
+          25.23384601756902,
+          -20.820032817840456
+        ],
+        [
+          26.4997580251395,
+          -22.78641613626644
+        ],
+        [
+          27.32682053675194,
+          -23.630357474646644
+        ],
+        [
+          28.238277182202637,
+          -24.609329427167722
+        ],
+        [
+          28.921869666290604,
+          -25.318240151407167
+        ],
+        [
+          29.47043153623781,
+          -25.62205903322399
+        ],
+        [
+          30.002114579417366,
+          -25.908999088273276
+        ],
+        [
+          30.002114579417366,
+          -25.908999088273276
+        ]
+      ],
+      "pressures": [],
+      "simulatePressure": true,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "7y4wbOc-yDqZBJY4jSf-k",
+      "type": "freedraw",
+      "x": 823.1207385506657,
+      "y": 533.6324088967705,
+      "width": 27.27618405644921,
+      "height": 47.70800385863487,
+      "angle": 0,
+      "strokeColor": "#ff8787",
+      "backgroundColor": "#ffec99",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "index": "b0w",
+      "roundness": null,
+      "seed": 30047660,
+      "version": 224,
+      "versionNonce": 860289940,
+      "isDeleted": false,
+      "boundElements": [],
+      "updated": 1783494144326,
       "link": null,
       "locked": false,
       "points": [

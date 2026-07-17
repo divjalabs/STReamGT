@@ -61,6 +61,10 @@ class JobCreate(BaseModel):
     min_overlap: int = 20
     expected_read_number: int | None = None
     batches: list[SampleBatchIn] = Field(min_length=1)
+    # Optional: ingest this job's samples into a project (animal/matching layer).
+    project_id: int | None = None
+    default_population_id: int | None = None
+    default_study_id: int | None = None
 
 
 # ---------- job output ----------

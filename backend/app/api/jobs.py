@@ -139,6 +139,44 @@ def create_job(
             )
         seen_tags |= tags
 
+    # If no explicit target is given and this kit is attached to exactly one study, default the
+    # ingestion target to that study (fills the Submit-page gap). The attachment already required
+    # project edit rights, so we trust it and skip the per-submitter edit check below.
+    auto_target = False
+    if (payload.project_id is None and payload.default_population_id is None
+            and payload.default_study_id is None):
+        from app.models import Study, study_kits
+        study_ids = db.scalars(
+            select(study_kits.c.study_id).where(study_kits.c.kit_id == kit.id)
+        ).all()
+        if len(study_ids) == 1:
+            study = db.get(Study, study_ids[0])
+            payload.project_id = study.project_id
+            payload.default_population_id = study.population_id
+            payload.default_study_id = study.id
+            auto_target = True
+
+    # Optional project target: validate edit access and that population/study belong to it.
+    if payload.project_id is not None and not auto_target:
+        from app.auth.access import get_accessible_project
+        from app.models import Population, Study
+        project = get_accessible_project(payload.project_id, need_edit=True, db=db, user=current)
+        if payload.default_population_id is not None:
+            pop = db.get(Population, payload.default_population_id)
+            if pop is None or pop.project_id != project.id:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                    "default_population_id is not in this project")
+        if payload.default_study_id is not None:
+            st = db.get(Study, payload.default_study_id)
+            if st is None or st.project_id != project.id:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                    "default_study_id is not in this project")
+    elif payload.project_id is None and (
+        payload.default_population_id is not None or payload.default_study_id is not None
+    ):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "population/study require a project_id")
+
     public_id = str(uuid.uuid4())
     job = Job(
         public_id=public_id,
@@ -151,6 +189,9 @@ def create_job(
         min_identity=payload.min_identity,
         min_overlap=payload.min_overlap,
         expected_read_number=payload.expected_read_number,
+        project_id=payload.project_id,
+        default_population_id=payload.default_population_id,
+        default_study_id=payload.default_study_id,
         storage_prefix=f"results/{kit.kit_code}/{public_id}",
         batches=[
             SampleBatch(

@@ -45,6 +45,7 @@ class ResultKind(str, enum.Enum):
     positions = "positions"
     frequency = "frequency"
     consensus = "consensus"
+    reference_alleles = "reference_alleles"
     reads_summary = "reads_summary"
     html_report = "html_report"
     consensus_report = "consensus_report"
@@ -56,3 +57,62 @@ class KitStatus(str, enum.Enum):
     received = "received"  # client confirmed receipt / registered it
     analysed = "analysed"  # a genotyping job for this kit has succeeded (set automatically)
     reanalyse = "reanalyse"  # admin re-approved an analysed kit so it can be submitted again
+
+
+# --- animal/sample store + consensus + matching (M1+) ---
+
+class Sex(str, enum.Enum):
+    unknown = "unknown"
+    male = "male"
+    female = "female"
+
+
+class ProjectRole(str, enum.Enum):
+    """Role of a shared (non-owner) user on a project."""
+    viewer = "viewer"
+    editor = "editor"
+
+
+class ConsensusSource(str, enum.Enum):
+    pipeline = "pipeline"        # ingested from a Nextflow job's consensus output
+    recomputed = "recomputed"    # recomputed by the backend consensus service
+    manual = "manual"            # hand-edited by a user
+
+
+class MatchTier(str, enum.Enum):
+    none = "none"
+    possible = "possible"
+    reliable = "reliable"
+
+
+class MatchCode(str, enum.Enum):
+    """Per-marker comparison result between two genotypes (MisBase 4-bit codes)."""
+    match = "match"
+    pADO1 = "pADO1"   # possible allelic dropout in the reference sample
+    pADO2 = "pADO2"   # possible allelic dropout in the search sample
+    pADOh = "pADOh"   # homozygote vs homozygote (ambiguous possible dropout)
+    ic1 = "ic1"       # one incompatible allele
+    ic2 = "ic2"       # both alleles incompatible
+    na1 = "na1"       # missing in the reference sample
+    na2 = "na2"       # missing in the search sample
+
+
+class RunStatus(str, enum.Enum):
+    queued = "queued"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self in (RunStatus.succeeded, RunStatus.failed)
+
+
+class MismatchMetric(str, enum.Enum):
+    flat = "flat"            # flat allele-mismatch count (Pirog Tm)
+    decomposed = "decomposed"  # MisBase ADO/1IC/2IC/total decomposition
+
+
+class MatchingMode(str, enum.Enum):
+    reference_anchored = "reference_anchored"  # primary, incremental-friendly
+    clique = "clique"                          # batch maximal-clique QC pass

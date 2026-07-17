@@ -9,6 +9,13 @@ import Jobs from "./pages/Jobs.jsx";
 import JobDetail from "./pages/JobDetail.jsx";
 import Submit from "./pages/Submit.jsx";
 import Kits from "./pages/Kits.jsx";
+import Projects from "./pages/projects/Projects.jsx";
+import ProjectDetail from "./pages/projects/ProjectDetail.jsx";
+import SampleReport from "./pages/samples/SampleReport.jsx";
+import SamplePage from "./pages/samples/SamplePage.jsx";
+import SampleReplicates from "./pages/samples/SampleReplicates.jsx";
+import SamplePlots from "./pages/samples/SamplePlots.jsx";
+import AnimalMatch from "./pages/matching/AnimalMatch.jsx";
 import AdminKits from "./pages/admin/AdminKits.jsx";
 import AdminPanels from "./pages/admin/AdminPanels.jsx";
 import AdminUsers from "./pages/admin/AdminUsers.jsx";
@@ -39,7 +46,7 @@ function Nav() {
         <Link to="/">Home</Link>
         <Link to="/jobs">My jobs</Link>
         <Link to="/kits">My kits</Link>
-        <Link to="/submit">New analysis</Link>
+        <Link to="/projects">Projects</Link>
         {isAdmin && <span className="nav-sep">·</span>}
         {isAdmin && <Link to="/admin/kits">Kits</Link>}
         {isAdmin && <Link to="/admin/panels">Panels</Link>}
@@ -65,6 +72,14 @@ export default function App() {
         <Route path="/jobs" element={<Protected><Jobs /></Protected>} />
         <Route path="/manuals/:slug" element={<Manual />} />
         <Route path="/kits" element={<Protected><Kits /></Protected>} />
+        <Route path="/projects" element={<Protected><Projects /></Protected>} />
+        <Route path="/projects/:id" element={<Protected><ProjectDetail /></Protected>} />
+        <Route path="/populations/:populationId/samples" element={<Protected><SampleReport /></Protected>} />
+        <Route path="/studies/:studyId/samples" element={<Protected><SampleReport /></Protected>} />
+        <Route path="/samples/:id" element={<Protected><SamplePage /></Protected>} />
+        <Route path="/samples/:id/replicates" element={<Protected><SampleReplicates /></Protected>} />
+        <Route path="/samples/:id/plots" element={<Protected><SamplePlots /></Protected>} />
+        <Route path="/populations/:populationId/match" element={<Protected><AnimalMatch /></Protected>} />
         <Route path="/submit" element={<Protected><Submit /></Protected>} />
         <Route path="/jobs/:publicId" element={<Protected><JobDetail /></Protected>} />
         <Route path="/admin/kits" element={<AdminProtected><AdminKits /></AdminProtected>} />

@@ -7,6 +7,14 @@ from app.models.enums import (
     FastqSource,
     ResultKind,
     KitStatus,
+    Sex,
+    ProjectRole,
+    ConsensusSource,
+    MatchTier,
+    MatchCode,
+    RunStatus,
+    MismatchMetric,
+    MatchingMode,
 )
 from app.models.user import User
 from app.models.kit import (
@@ -19,6 +27,27 @@ from app.models.kit import (
     kit_access,
 )
 from app.models.job import Job, SampleBatch, ResultFile
+from app.models.project import (
+    Project,
+    Population,
+    Study,
+    SampleType,
+    project_access,
+    study_kits,
+)
+from app.models.sample import Sample, ReplicateObservation, ReplicateAmplification
+from app.models.consensus import ConsensusGenotype, ConsensusEditLog, ReferenceAllele
+from app.models.matching import (
+    PopulationMarker,
+    PopulationAlleleFrequency,
+    MatchingSettings,
+    MatchingRun,
+    MatchSubgroup,
+    MatchSupergroup,
+    match_supergroup_members,
+    Match,
+    MatchingLog,
+)
 
 __all__ = [
     "UserRole",
@@ -28,6 +57,14 @@ __all__ = [
     "FastqSource",
     "ResultKind",
     "KitStatus",
+    "Sex",
+    "ProjectRole",
+    "ConsensusSource",
+    "MatchTier",
+    "MatchCode",
+    "RunStatus",
+    "MismatchMetric",
+    "MatchingMode",
     "User",
     "Kit",
     "Primer",
@@ -39,4 +76,25 @@ __all__ = [
     "Job",
     "SampleBatch",
     "ResultFile",
+    "Project",
+    "Population",
+    "Study",
+    "SampleType",
+    "project_access",
+    "study_kits",
+    "Sample",
+    "ReplicateObservation",
+    "ReplicateAmplification",
+    "ConsensusGenotype",
+    "ConsensusEditLog",
+    "ReferenceAllele",
+    "PopulationMarker",
+    "PopulationAlleleFrequency",
+    "MatchingSettings",
+    "MatchingRun",
+    "MatchSubgroup",
+    "MatchSupergroup",
+    "match_supergroup_members",
+    "Match",
+    "MatchingLog",
 ]

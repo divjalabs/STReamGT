@@ -40,6 +40,7 @@ def count_fastq_reads(path: str, stop_at: int | None = None) -> int:
 # Map published pipeline output filenames (suffixes) to a ResultKind.
 _RESULT_SUFFIXES = {
     "_consensus_genotypes.txt": ResultKind.consensus,  # must win over "_genotypes.txt"
+    "_reference_alleles.txt": ResultKind.reference_alleles,
     "_genotypes.txt": ResultKind.genotypes,
     "_positions.txt": ResultKind.positions,
     "_frequency_of_sequences_by_marker.txt": ResultKind.frequency,

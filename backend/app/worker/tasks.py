@@ -9,6 +9,7 @@ Flow (status transitions in parentheses):
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -17,11 +18,13 @@ from datetime import datetime, timezone
 
 from app.config import settings
 from app.db import SessionLocal
-from app.models import Job, ResultFile, JobStatus, FastqSource, KitStatus
+from app.models import Job, ResultFile, ResultKind, JobStatus, FastqSource, KitStatus
 from app.services import storage, notify
 from app.services.samplesheet import build_input_tsv, BatchRow
 from app.worker.celery_app import celery_app
 from app.worker import pipeline_run as pr
+
+log = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -207,6 +210,24 @@ def execute_job(job_id: int) -> str:
                               filename=r.filename, size_bytes=os.path.getsize(r.path)))
         db.commit()
 
+        # 4b. Ingest structured genotype data into the project store (best-effort; a parsing
+        #     failure must not fail an otherwise-successful genotyping job).
+        if job.project_id:
+            try:
+                from app.services.ingestion import ingest_job_outputs
+                summary = ingest_job_outputs(
+                    db, job,
+                    consensus_path=pr.find_result(results, ResultKind.consensus),
+                    reference_alleles_path=pr.find_result(results, ResultKind.reference_alleles),
+                    genotypes_path=pr.find_result(results, ResultKind.genotypes),
+                    positions_path=pr.find_result(results, ResultKind.positions),
+                )
+                db.commit()
+                log.info("ingested job %s into project %s: %s", job.public_id, job.project_id, summary)
+            except Exception as ing_exc:  # noqa: BLE001
+                db.rollback()
+                log.exception("ingestion failed for job %s: %s", job.public_id, ing_exc)
+
         kit.status = KitStatus.analysed  # a successful job marks the kit analysed
         set_status(JobStatus.succeeded, finished_at=_now())
         _safe_notify(notify.send_job_succeeded, job.user.email, kit.kit_code, job.public_id)
@@ -227,4 +248,6 @@ def _safe_notify(fn, *args) -> None:
     try:
         fn(*args)
     except Exception:  # noqa: BLE001 — email must never crash the task
-        pass
+        # Best-effort: a failed email must not fail the job, but it must be visible.
+        # Logs to CloudWatch (/ecs/streamgt-head, /ecs/streamgt-api) for diagnosis.
+        log.exception("notification %s failed", getattr(fn, "__name__", fn))
