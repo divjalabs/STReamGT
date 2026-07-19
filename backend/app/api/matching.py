@@ -10,13 +10,15 @@ from app.db import get_db
 from app.auth.deps import get_current_user
 from app.auth.access import get_accessible_project
 from app.models import (
-    User, Population, MatchingRun, MatchSubgroup, MatchSupergroup, match_supergroup_members, Match,
+    User, Population, Sample, MatchingRun, MatchSubgroup, MatchSupergroup, match_supergroup_members,
+    Match, AnimalOverride,
 )
 from app.schemas.matching import (
     MatchingRunOut, MatchSubgroupOut, MatchOut, MatchingSettingsOut, MatchingSettingsUpdate,
-    SupergroupOut,
+    SupergroupOut, AnimalDetailOut, AnimalMemberOut, AnimalUpdate,
 )
 from app.services.matching.runner import run_matching, get_or_create_settings
+from app.services.matching import single
 
 router = APIRouter(tags=["matching"])
 
@@ -27,6 +29,42 @@ def _population(db: Session, population_id: int, current: User, *, need_edit=Fal
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Population not found")
     get_accessible_project(pop.project_id, need_edit=need_edit, db=db, user=current)
     return pop
+
+
+def _subgroup(db: Session, subgroup_id: int, current: User, *, need_edit=False) -> MatchSubgroup:
+    sg = db.get(MatchSubgroup, subgroup_id)
+    if sg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Animal not found")
+    pop = db.get(Population, sg.population_id)
+    get_accessible_project(pop.project_id, need_edit=need_edit, db=db, user=current)
+    return sg
+
+
+def _override_of(db: Session, sg: MatchSubgroup) -> AnimalOverride | None:
+    if sg.reference_sample_id is None:
+        return None
+    return db.scalar(select(AnimalOverride).where(
+        AnimalOverride.reference_sample_id == sg.reference_sample_id))
+
+
+def _animal_detail(db: Session, sg: MatchSubgroup) -> AnimalDetailOut:
+    ov = _override_of(db, sg)
+    members = db.scalars(
+        select(Sample).where(Sample.subgroup_id == sg.id).order_by(Sample.system_code)).all()
+    ref_code = None
+    if sg.reference_sample_id is not None:
+        rs = db.get(Sample, sg.reference_sample_id)
+        ref_code = rs.system_code if rs else None
+    return AnimalDetailOut(
+        id=sg.id, public_id=sg.public_id, label=sg.label, population_id=sg.population_id,
+        reference_sample_id=sg.reference_sample_id, reference_system_code=ref_code,
+        n_samples=len(members), n_reliable=single.reliable_count(db, sg),
+        reliably_genotyped=(ov.reliably_genotyped if ov else False),
+        is_confirmed=(ov.is_confirmed if ov else sg.is_confirmed),
+        sex=sg.sex,
+        members=[AnimalMemberOut(id=m.id, system_code=m.system_code, name=m.name,
+                                 is_reference=(m.id == sg.reference_sample_id)) for m in members],
+    )
 
 
 @router.post("/populations/{population_id}/rerun-match", response_model=MatchingRunOut)
@@ -55,10 +93,87 @@ def list_subgroups(
     population_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user),
 ):
     _population(db, population_id, current)
-    return db.scalars(
+    subs = db.scalars(
         select(MatchSubgroup).where(MatchSubgroup.population_id == population_id)
         .order_by(MatchSubgroup.n_samples.desc(), MatchSubgroup.id)
     ).all()
+    rg = dict(db.execute(
+        select(AnimalOverride.reference_sample_id, AnimalOverride.reliably_genotyped)
+        .where(AnimalOverride.population_id == population_id)
+    ).all())
+    for sg in subs:
+        sg.reliably_genotyped = rg.get(sg.reference_sample_id, False)   # transient attr
+    return subs
+
+
+@router.get("/subgroups/{subgroup_id}", response_model=AnimalDetailOut)
+def get_subgroup(
+    subgroup_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    sg = _subgroup(db, subgroup_id, current)
+    detail = _animal_detail(db, sg)
+    db.commit()          # get_or_create_settings (in reliable_count) may have created a default row
+    return detail
+
+
+@router.post("/subgroups/{subgroup_id}/rematch")
+def rematch_subgroup(
+    subgroup_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    """Re-match this animal's reference against the population; returns candidate matches + the
+    per-locus genotype grid (display-only, persists nothing)."""
+    sg = _subgroup(db, subgroup_id, current)
+    result = single.rematch_reference(db, sg)
+    db.commit()
+    return result
+
+
+@router.patch("/subgroups/{subgroup_id}", response_model=AnimalDetailOut)
+def update_subgroup(
+    subgroup_id: int, payload: AnimalUpdate,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    sg = _subgroup(db, subgroup_id, current, need_edit=True)
+    data = payload.model_dump(exclude_unset=True)
+
+    # Change the reference sample: pin it (survives full reruns), relabel, carry the override over.
+    new_ref = data.get("reference_sample_id")
+    if new_ref is not None and new_ref != sg.reference_sample_id:
+        target = db.get(Sample, new_ref)
+        if target is None or target.subgroup_id != sg.id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                "reference must be a member of this animal")
+        old_ref = sg.reference_sample_id
+        if old_ref is not None:
+            old = db.get(Sample, old_ref)
+            if old is not None:
+                old.is_animal_reference = False
+            moved = db.scalar(select(AnimalOverride).where(
+                AnimalOverride.reference_sample_id == old_ref))
+            if moved is not None:
+                moved.reference_sample_id = new_ref
+        target.is_animal_reference = True
+        sg.reference_sample_id = new_ref
+        sg.label = target.system_code
+
+    # Upsert the persistent per-animal flags (keyed by the current reference sample).
+    flags = {k: data[k] for k in ("reliably_genotyped", "is_confirmed", "notes") if k in data}
+    if flags:
+        ov = _override_of(db, sg)
+        if ov is None:
+            ov = AnimalOverride(population_id=sg.population_id,
+                                reference_sample_id=sg.reference_sample_id)
+            db.add(ov)
+        for k, v in flags.items():
+            setattr(ov, k, v)
+        if "is_confirmed" in flags:
+            sg.is_confirmed = flags["is_confirmed"]
+
+    db.commit()
+    db.refresh(sg)
+    detail = _animal_detail(db, sg)
+    db.commit()
+    return detail
 
 
 @router.get("/populations/{population_id}/supergroups", response_model=list[SupergroupOut])

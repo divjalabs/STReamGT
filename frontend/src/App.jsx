@@ -16,6 +16,7 @@ import SamplePage from "./pages/samples/SamplePage.jsx";
 import SampleReplicates from "./pages/samples/SampleReplicates.jsx";
 import SamplePlots from "./pages/samples/SamplePlots.jsx";
 import AnimalMatch from "./pages/matching/AnimalMatch.jsx";
+import AnimalView from "./pages/matching/AnimalView.jsx";
 import AdminKits from "./pages/admin/AdminKits.jsx";
 import AdminPanels from "./pages/admin/AdminPanels.jsx";
 import AdminUsers from "./pages/admin/AdminUsers.jsx";
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="/samples/:id/replicates" element={<Protected><SampleReplicates /></Protected>} />
         <Route path="/samples/:id/plots" element={<Protected><SamplePlots /></Protected>} />
         <Route path="/populations/:populationId/match" element={<Protected><AnimalMatch /></Protected>} />
+        <Route path="/animals/:subgroupId" element={<Protected><AnimalView /></Protected>} />
         <Route path="/submit" element={<Protected><Submit /></Protected>} />
         <Route path="/jobs/:publicId" element={<Protected><JobDetail /></Protected>} />
         <Route path="/admin/kits" element={<AdminProtected><AdminKits /></AdminProtected>} />

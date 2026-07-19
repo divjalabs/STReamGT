@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client.js";
 import { num } from "../../components/consensus.jsx";
 
@@ -75,7 +75,9 @@ export default function SampleReport() {
                 <td>{s.system_code}{s.discard_sample && <span className="tag">discarded</span>}</td>
                 <td>{s.name}</td><td>{s.sex}</td>
                 <td>{s.genotype_ok ? "yes" : "—"}</td><td>{num(s.quality_index)}</td>
-                <td className="muted">{s.subgroup_id ? `#${s.subgroup_id}` : "—"}</td>
+                <td className="muted" onClick={(e) => e.stopPropagation()}>
+                  {s.subgroup_id ? <Link to={`/animals/${s.subgroup_id}`}>#{s.subgroup_id}</Link> : "—"}
+                </td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <select className="pop-select" value={s.population_id ?? ""}
                           onChange={(e) => assign(s.id, e.target.value)}>

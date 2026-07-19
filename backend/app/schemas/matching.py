@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.enums import RunStatus, MatchTier, MismatchMetric
+from app.models.enums import RunStatus, MatchTier, MismatchMetric, Sex
 
 
 class MatchingRunOut(BaseModel):
@@ -27,6 +27,36 @@ class MatchSubgroupOut(BaseModel):
     reference_sample_id: int | None
     n_samples: int | None
     is_confirmed: bool
+    reliably_genotyped: bool = False      # joined from AnimalOverride
+
+
+class AnimalMemberOut(BaseModel):
+    id: int
+    system_code: str
+    name: str
+    is_reference: bool
+
+
+class AnimalDetailOut(BaseModel):
+    id: int
+    public_id: str
+    label: str | None
+    population_id: int
+    reference_sample_id: int | None
+    reference_system_code: str | None
+    n_samples: int
+    n_reliable: int
+    reliably_genotyped: bool
+    is_confirmed: bool
+    sex: Sex
+    members: list[AnimalMemberOut]
+
+
+class AnimalUpdate(BaseModel):
+    reliably_genotyped: bool | None = None
+    is_confirmed: bool | None = None
+    notes: str | None = None
+    reference_sample_id: int | None = None
 
 
 class SupergroupOut(BaseModel):

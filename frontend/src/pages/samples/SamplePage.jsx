@@ -227,11 +227,19 @@ export default function SamplePage() {
                 onClick={() => patch({ genotype_ok: !sample.genotype_ok })} title="Click to toggle">
           {sample.genotype_ok ? "✓ Genotyped" : "✕ Not genotyped"}
         </button>
-        <span className={`stat-badge ${sample.subgroup_id ? "good" : "neutral"}`}>
-          {sample.subgroup_id ? `✓ Matched${sample.animal_label ? ` · ${sample.animal_label}` : ""}` : "Unmatched"}
-        </span>
+        {sample.subgroup_id ? (
+          <Link className="stat-badge good" to={`/animals/${sample.subgroup_id}`}>
+            ✓ Matched{sample.animal_label ? ` · ${sample.animal_label}` : ""}
+          </Link>
+        ) : (
+          <span className="stat-badge neutral">Unmatched</span>
+        )}
         <span className="info-field">Kit <strong>{sample.kit_code || "—"}</strong></span>
-        <span className="info-field">Animal <strong>{sample.animal_label || "—"}</strong></span>
+        <span className="info-field">Animal <strong>
+          {sample.subgroup_id
+            ? <Link to={`/animals/${sample.subgroup_id}`}>{sample.animal_label || `#${sample.subgroup_id}`}</Link>
+            : "—"}
+        </strong></span>
         <span className="muted small">mean QI {num(sample.quality_index)} · {sample.n_replicates ?? "—"} reps</span>
         <label className="qc-field">Sex
           <select value={sample.sex} onChange={(e) => patch({ sex: e.target.value })}>

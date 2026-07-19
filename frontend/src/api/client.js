@@ -147,6 +147,9 @@ export const api = {
   rerunMatch: (populationId) =>
     request(`/populations/${populationId}/rerun-match`, { method: "POST" }),
   listSubgroups: (populationId) => request(`/populations/${populationId}/subgroups`),
+  getSubgroup: (subgroupId) => request(`/subgroups/${subgroupId}`),
+  rematchSubgroup: (subgroupId) => request(`/subgroups/${subgroupId}/rematch`, { method: "POST" }),
+  patchSubgroup: (subgroupId, body) => request(`/subgroups/${subgroupId}`, { method: "PATCH", body }),
   listSupergroups: (populationId) => request(`/populations/${populationId}/supergroups`),
   listMatches: (populationId) => request(`/populations/${populationId}/matches`),
   getMatchingSettings: (populationId) => request(`/populations/${populationId}/matching-settings`),

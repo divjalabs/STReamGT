@@ -228,3 +228,28 @@ class MatchingLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class AnimalOverride(Base):
+    """Persistent per-animal manual edits, keyed by the stable reference sample so they survive a
+    full population rerun (which recreates the transient MatchSubgroup rows). Mirrors the manual
+    fields of MisBase tblIndividualAnimals (ReliablyGenotyped, confirmed, notes)."""
+
+    __tablename__ = "animal_overrides"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    population_id: Mapped[int] = mapped_column(
+        ForeignKey("populations.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    reference_sample_id: Mapped[int] = mapped_column(
+        ForeignKey("samples.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
+    reliably_genotyped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(2048))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

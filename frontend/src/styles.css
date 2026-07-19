@@ -330,6 +330,27 @@ tr.sex-row > td, tr.is-sex > td { background: #f3f0ff; }
 th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 th.sortable:hover { color: var(--brand); }
 
+/* --- individual animal page + matches dialog --- */
+.animal-head { display: flex; gap: 1rem 1.5rem; flex-wrap: wrap; align-items: center; margin: .5rem 0 1rem; }
+.check-inline { display: inline-flex; gap: .4rem; align-items: center; font-size: .88rem; }
+a.stat-badge { text-decoration: none; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 50;
+  display: flex; align-items: flex-start; justify-content: center; padding: 3rem 1rem; overflow: auto; }
+.modal-panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 1rem 1.2rem 1.2rem; width: 100%; max-width: min(1100px, 95vw);
+  box-shadow: 0 12px 44px rgba(0,0,0,.28); }
+.modal-panel.modal-narrow { max-width: min(560px, 95vw); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+.modal-head h2 { margin: 0; }
+
+tr.ref-row > td { background: #eef2ff; }
+tr.reliable-row > td { background: #eafaf0; }
+.genotype-grid td, .genotype-grid th { text-align: center; white-space: nowrap; }
+.genotype-grid .marker-cell { text-align: left; font-weight: 500; }
+.genotype-grid th.ref-col, .genotype-grid td.ref-col { background: #eef2ff; }
+.genotype-grid td.cell-mismatch { background: #fde2e2; color: #b91c1c; font-weight: 600; }
+
 /* plots (overrides earlier .gplot-line / add labels) */
 .gplot-line { fill: none; stroke: #94a3b8; stroke-width: 1; stroke-dasharray: 3 2; opacity: .75; }
 .gplot-subtitle { font-size: 9px; fill: var(--muted); }

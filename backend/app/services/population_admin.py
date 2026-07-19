@@ -14,7 +14,7 @@ from app.models import (
     Study, Population, Sample, ConsensusGenotype, ConsensusEditLog,
     ReplicateObservation, ReplicateAmplification,
     MatchingRun, Match, MatchSubgroup, MatchSupergroup, match_supergroup_members,
-    MatchingLog, PopulationMarker, PopulationAlleleFrequency, study_kits,
+    MatchingLog, PopulationMarker, PopulationAlleleFrequency, study_kits, AnimalOverride,
 )
 
 
@@ -39,6 +39,8 @@ def purge_population_scoped_data(db: Session, pop_ids: list[int]) -> None:
     db.execute(delete(PopulationMarker).where(PopulationMarker.population_id.in_(pop_ids)))
     db.execute(delete(PopulationAlleleFrequency)
                .where(PopulationAlleleFrequency.population_id.in_(pop_ids)))
+    # persistent per-animal overrides (only removed when the population itself is deleted)
+    db.execute(delete(AnimalOverride).where(AnimalOverride.population_id.in_(pop_ids)))
 
 
 def _delete_samples(db: Session, sample_ids: list[int]) -> None:

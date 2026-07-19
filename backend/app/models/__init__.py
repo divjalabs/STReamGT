@@ -47,6 +47,7 @@ from app.models.matching import (
     match_supergroup_members,
     Match,
     MatchingLog,
+    AnimalOverride,
 )
 
 __all__ = [
@@ -97,4 +98,5 @@ __all__ = [
     "match_supergroup_members",
     "Match",
     "MatchingLog",
+    "AnimalOverride",
 ]
