@@ -1,7 +1,7 @@
 # STReamGT
 
 STR/SNP genotyping platform: a **Nextflow pipeline** (OBITools4 + custom allele callers)
-plus a **web application** that lets lab users submit genotyping jobs, track progress,
+plus a [web application](https://d2qy3qqpz2ebmu.cloudfront.net/) that lets lab users submit genotyping jobs, track progress,
 and download genotypes + QC reports.
 
 ## Monorepo layout
