@@ -12,7 +12,7 @@ process DEMULTIPLEX_READS {
 
     script:
     """
-    obimultiplex -s ${ngsfilter_file} ${assembled_reads} -u not_assigned.fastq > assigned_reads.fastq
+    obimultiplex --skip-empty -s ${ngsfilter_file} ${assembled_reads} -u not_assigned.fastq > assigned_reads.fastq
     obicsv -k obimultiplex_error not_assigned.fastq > obimultiplex_errors.csv
     tail -n+2 obimultiplex_errors.csv | sort  | uniq -c > ngsfilter_stat.txt
 

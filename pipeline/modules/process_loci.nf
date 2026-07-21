@@ -12,8 +12,8 @@ process PROCESS_LOCI{
 
     script:
     """
-    obigrep -a experiment=${locus} assigned_reads.fastq > ${locus}.fastq
-    obiuniq -m sample ${locus}.fastq > ${locus}_uniq.fastq
+    obigrep -a experiment=${locus} --skip-empty assigned_reads.fastq > ${locus}.fastq
+    obiuniq --skip-empty -m sample ${locus}.fastq > ${locus}_uniq.fastq
     obimatrix ${locus}_uniq.fastq > ${locus}_counts.csv
     obicsv -i -s ${locus}_uniq.fastq > ${locus}.csv
     """
