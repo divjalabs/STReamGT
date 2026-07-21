@@ -20,15 +20,12 @@ process CREATE_SUMMARY {
     #!/bin/bash
     set -euo pipefail
 
-    # count reads in FASTQ
-    reads_sequenced=\$(gunzip -c ${raw_fastq} | wc -l)
-    reads_sequenced=\$((reads_sequenced / 4))
-
-    reads_paired_filtered=\$(wc -l < ${paired_fastq})
-    reads_paired_filtered=\$((reads_paired_filtered / 4))
-
-    reads_pass_ngsfilter=\$(wc -l < ${assigned_fastq})
-    reads_pass_ngsfilter=\$((reads_pass_ngsfilter / 4))
+    # Precise read counts via 'obicount -r' — counts reads (not just sequence records) and is
+    # format-agnostic (works on fastq AND fasta / .gz). Output is 2 CSV lines ("entities,n" then
+    # "reads,<N>"); take the value on the last line.
+    reads_sequenced=\$(obicount -r ${raw_fastq} | tail -n1 | cut -d',' -f2)
+    reads_paired_filtered=\$(obicount -r ${paired_fastq} | tail -n1 | cut -d',' -f2)
+    reads_pass_ngsfilter=\$(obicount -r ${assigned_fastq} | tail -n1 | cut -d',' -f2)
 
 
     # write CSV

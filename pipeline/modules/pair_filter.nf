@@ -16,7 +16,7 @@ process PAIR_FILTER {
         --min-overlap ${params.min_overlap} \
         > aligned_reads.fastq
 
-    obigrep -p 'annotations.mode != "join"' \
+    obigrep -p 'annotations.mode != "join"' --fasta-output \
         aligned_reads.fastq \
         > assembled_reads.fastq
     """
