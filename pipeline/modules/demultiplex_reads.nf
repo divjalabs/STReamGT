@@ -7,13 +7,13 @@ process DEMULTIPLEX_READS {
     path ngsfilter_file
 
     output:
-    path("assigned_reads.fastq"), emit: assigned_reads
+    path("assigned_reads.fasta"), emit: assigned_reads
     path("ngsfilter_stat.txt"), emit: ngsfilter_stats
 
     script:
     """
-    obimultiplex --skip-empty -s ${ngsfilter_file} ${assembled_reads} -u not_assigned.fastq > assigned_reads.fastq
-    obicsv -k obimultiplex_error not_assigned.fastq > obimultiplex_errors.csv
+    obimultiplex --skip-empty -s ${ngsfilter_file} ${assembled_reads} -u not_assigned.fasta > assigned_reads.fasta
+    obicsv -k obimultiplex_error not_assigned.fasta > obimultiplex_errors.csv
     tail -n+2 obimultiplex_errors.csv | sort  | uniq -c > ngsfilter_stat.txt
 
     """

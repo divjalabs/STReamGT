@@ -8,7 +8,7 @@ process CREATE_SUMMARY {
     val kit_id
     path raw_fastq
     path paired_fastq
-    path assigned_fastq
+    path assigned_fasta
     path ngsfilter_stat
 
     output:
@@ -25,7 +25,7 @@ process CREATE_SUMMARY {
     # "reads,<N>"); take the value on the last line.
     reads_sequenced=\$(obicount -r ${raw_fastq} | tail -n1 | cut -d',' -f2)
     reads_paired_filtered=\$(obicount -r ${paired_fastq} | tail -n1 | cut -d',' -f2)
-    reads_pass_ngsfilter=\$(obicount -r ${assigned_fastq} | tail -n1 | cut -d',' -f2)
+    reads_pass_ngsfilter=\$(obicount -r ${assigned_fasta} | tail -n1 | cut -d',' -f2)
 
 
     # write CSV

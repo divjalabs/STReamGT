@@ -6,7 +6,7 @@ process PAIR_FILTER {
     tuple path(r1), path(r2)
 
     output:
-    path("assembled_reads.fastq")
+    path("assembled_reads.fasta")
 
     script:
     """
@@ -18,6 +18,6 @@ process PAIR_FILTER {
 
     obigrep -p 'annotations.mode != "join"' --fasta-output \
         aligned_reads.fastq \
-        > assembled_reads.fastq
+        > assembled_reads.fasta
     """
 }
