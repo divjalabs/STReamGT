@@ -6,12 +6,14 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import User, UserRole, Kit, Job, SampleBatch, JobStatus, KitStatus, ResultKind
+from app.models import (
+    User, UserRole, Kit, Job, SampleBatch, JobStatus, KitStatus, ResultKind, ResultFile,
+)
 from app.auth.deps import get_current_user
 from app.services import storage, notify
 from app.services.storage import DEFAULT_PART_SIZE
@@ -231,6 +233,30 @@ def _get_owned_job(public_id: str, db: Session, current: User) -> Job:
 @router.get("/{public_id}", response_model=JobOut)
 def get_job(public_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     return _get_owned_job(public_id, db, current)
+
+
+@router.post("/{public_id}/rerun", response_model=JobOut)
+def rerun_job(
+    public_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    """Re-run this job's analysis from the start (fresh head task, current pipeline image).
+    Reuses the same job + inputs; re-ingestion is idempotent (find-or-create by job_id+name)."""
+    job = _get_owned_job(public_id, db, current)
+    if not job.status.is_terminal:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Job is still running; wait for it to finish before rerunning")
+    # clear the previous run's result rows (S3 objects overwrite at the same keys on the new run)
+    db.execute(delete(ResultFile).where(ResultFile.job_id == job.id))
+    job.status = JobStatus.queued
+    job.error_message = None
+    job.started_at = None
+    job.finished_at = None
+    job.observed_read_count = None
+    # keep reads_confirmed as-is so a previously-confirmed low-read job doesn't re-pause
+    db.commit()
+    db.refresh(job)
+    enqueue_job(job.id)
+    return job
 
 
 @router.post("/{public_id}/confirm", response_model=JobOut)

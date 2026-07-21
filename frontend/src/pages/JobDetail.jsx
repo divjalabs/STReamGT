@@ -11,6 +11,7 @@ export default function JobDetail() {
   const [results, setResults] = useState([]);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(0);   // bump to restart live polling (after a rerun)
   const [showReanalysis, setShowReanalysis] = useState(false);
   const [reason, setReason] = useState("");
   const [reanalysisSent, setReanalysisSent] = useState(false);
@@ -20,6 +21,18 @@ export default function JobDetail() {
     setBusy(true);
     try {
       setJob(await api.confirmJob(publicId, proceed));
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rerun = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const j = await api.rerunJob(publicId);
+      setJob(j); setResults([]); setTick((t) => t + 1);   // restart polling from queued
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -57,7 +70,7 @@ export default function JobDetail() {
     };
     poll();
     return () => clearTimeout(timer);
-  }, [publicId]);
+  }, [publicId, tick]);
 
   if (err) return <div className="container"><p className="error">{err}</p></div>;
   if (!job) return <div className="container">Loading…</div>;
@@ -90,6 +103,13 @@ export default function JobDetail() {
             <li key={s} className={i < stepIdx ? "done" : i === stepIdx ? "active" : ""}>{s}</li>
           ))}
         </ol>
+      )}
+
+      {(job.status === "succeeded" || job.status === "failed") && (
+        <div className="actions" style={{ margin: ".2rem 0 1rem", alignItems: "center" }}>
+          <button disabled={busy} onClick={rerun}>↻ Rerun analysis</button>
+          <span className="muted small">Runs the whole pipeline again from the start (uses the current pipeline).</span>
+        </div>
       )}
 
       <h2>Sample batches</h2>

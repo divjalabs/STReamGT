@@ -55,6 +55,38 @@ def test_create_job_enqueues_when_granted(client, catalog, admin_token, user_tok
     assert len(no_enqueue) == 1
 
 
+def test_rerun_job(client, catalog, admin_token, user_token, no_enqueue):
+    kit_id = _make_kit(client, admin_token, assigned_ids=[user_id("user@x.com")])
+    pub = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).json()["public_id"]
+
+    # can't rerun while it's still in flight (queued is non-terminal)
+    assert client.post(f"/api/jobs/{pub}/rerun", headers=bearer(user_token)).status_code == 409
+
+    # drive it to a terminal state, then rerun re-queues it and re-enqueues
+    from app.db import SessionLocal
+    from app.models import Job, JobStatus, ResultFile, ResultKind
+    from sqlalchemy import select, func
+    with SessionLocal() as db:
+        job = db.scalar(select(Job).where(Job.public_id == pub))
+        job.status = JobStatus.failed
+        job.error_message = "boom"
+        db.add(ResultFile(job_id=job.id, kind=ResultKind.genotypes, object_key="k", filename="f"))
+        db.commit(); jid = job.id
+
+    no_enqueue.clear()
+    r = client.post(f"/api/jobs/{pub}/rerun", headers=bearer(user_token))
+    assert r.status_code == 200 and r.json()["status"] == "queued"
+    assert r.json()["error_message"] is None
+    assert no_enqueue == [jid]                       # re-dispatched
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(ResultFile).where(ResultFile.job_id == jid)) == 0
+
+    # not your job → 403
+    other = client.post("/api/auth/register",
+                        json={"email": "q@x.com", "password": "qpass1234"}).json()["access_token"]
+    assert client.post(f"/api/jobs/{pub}/rerun", headers=bearer(other)).status_code == 403
+
+
 def test_analysed_kit_blocks_until_reanalyse(client, catalog, admin_token, user_token):
     kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])
     # admin marks the kit analysed → user can no longer submit
