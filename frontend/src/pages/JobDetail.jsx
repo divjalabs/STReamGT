@@ -16,6 +16,10 @@ export default function JobDetail() {
   const [reason, setReason] = useState("");
   const [reanalysisSent, setReanalysisSent] = useState(false);
   const [reErr, setReErr] = useState(null);
+  const [showErrReport, setShowErrReport] = useState(false);
+  const [errNote, setErrNote] = useState("");
+  const [errReportSent, setErrReportSent] = useState(false);
+  const [errReportErr, setErrReportErr] = useState(null);
 
   const confirm = async (proceed) => {
     setBusy(true);
@@ -35,6 +39,18 @@ export default function JobDetail() {
       setJob(j); setResults([]); setTick((t) => t + 1);   // restart polling from queued
     } catch (e) {
       setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reportError = async () => {
+    setBusy(true); setErrReportErr(null);
+    try {
+      await api.reportJobError(publicId, errNote.trim() || null);
+      setErrReportSent(true); setShowErrReport(false);
+    } catch (e) {
+      setErrReportErr(e.message);
     } finally {
       setBusy(false);
     }
@@ -96,6 +112,30 @@ export default function JobDetail() {
         <div className="card error-card">
           <b>Failed</b>
           <pre>{job.error_message}</pre>
+          <div className="submit-bar">
+            <button disabled={busy} onClick={rerun}>↻ Rerun analysis</button>{" "}
+            {errReportSent ? (
+              <span className="muted">✓ Admin notified.</span>
+            ) : !showErrReport ? (
+              <button type="button" className="secondary" disabled={busy}
+                      onClick={() => setShowErrReport(true)}>Notify admin</button>
+            ) : null}
+          </div>
+          {showErrReport && !errReportSent && (
+            <div style={{ marginTop: ".5rem" }}>
+              <p className="muted small">The error above will be sent to the admins. Add any context (optional).</p>
+              {errReportErr && <p className="error">{errReportErr}</p>}
+              <textarea rows={3} value={errNote} onChange={(e) => setErrNote(e.target.value)}
+                        placeholder="Optional note for the admin…" />
+              <div className="submit-bar">
+                <button type="button" disabled={busy} onClick={reportError}>
+                  {busy ? "Sending…" : "Send to admin"}
+                </button>{" "}
+                <button type="button" className="secondary" disabled={busy}
+                        onClick={() => setShowErrReport(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <ol className="steps">
@@ -103,13 +143,6 @@ export default function JobDetail() {
             <li key={s} className={i < stepIdx ? "done" : i === stepIdx ? "active" : ""}>{s}</li>
           ))}
         </ol>
-      )}
-
-      {(job.status === "succeeded" || job.status === "failed") && (
-        <div className="actions" style={{ margin: ".2rem 0 1rem", alignItems: "center" }}>
-          <button disabled={busy} onClick={rerun}>↻ Rerun analysis</button>
-          <span className="muted small">Runs the whole pipeline again from the start (uses the current pipeline).</span>
-        </div>
       )}
 
       <h2>Sample batches</h2>

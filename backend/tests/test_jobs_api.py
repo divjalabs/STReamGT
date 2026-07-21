@@ -86,6 +86,36 @@ def test_rerun_job(client, catalog, admin_token, user_token, no_enqueue):
                         json={"email": "q@x.com", "password": "qpass1234"}).json()["access_token"]
     assert client.post(f"/api/jobs/{pub}/rerun", headers=bearer(other)).status_code == 403
 
+    # a SUCCEEDED job cannot be rerun (rerun is failed-only)
+    with SessionLocal() as db:
+        job = db.scalar(select(Job).where(Job.public_id == pub))
+        job.status = JobStatus.succeeded; db.commit()
+    assert client.post(f"/api/jobs/{pub}/rerun", headers=bearer(user_token)).status_code == 409
+
+
+def test_report_error(client, catalog, admin_token, user_token, monkeypatch):
+    sent = {}
+    monkeypatch.setattr("app.services.notify.send_error_reported",
+                        lambda admins, kit, pub, who, err, note: sent.update(
+                            admins=admins, err=err, note=note, who=who))
+    kit_id = _make_kit(client, admin_token, assigned_ids=[user_id("user@x.com")])
+    pub = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).json()["public_id"]
+
+    # can't report an error on a non-failed job
+    assert client.post(f"/api/jobs/{pub}/report-error", json={}, headers=bearer(user_token)).status_code == 409
+
+    from app.db import SessionLocal
+    from app.models import Job, JobStatus
+    from sqlalchemy import select
+    with SessionLocal() as db:
+        job = db.scalar(select(Job).where(Job.public_id == pub))
+        job.status = JobStatus.failed; job.error_message = "obiuniq: no space left"; db.commit()
+
+    r = client.post(f"/api/jobs/{pub}/report-error", json={"note": "please check"}, headers=bearer(user_token))
+    assert r.status_code == 204
+    assert sent["err"] == "obiuniq: no space left" and sent["note"] == "please check"
+    assert "admin@x.com" in sent["admins"] and sent["who"] == "user@x.com"
+
 
 def test_analysed_kit_blocks_until_reanalyse(client, catalog, admin_token, user_token):
     kit_id = _make_kit(client, admin_token, [user_id("user@x.com")])

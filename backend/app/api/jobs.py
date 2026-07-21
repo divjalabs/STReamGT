@@ -26,6 +26,7 @@ from app.schemas.job import (
     JobOut,
     JobSummary,
     ReanalysisRequest,
+    ErrorReport,
     ResultDownload,
 )
 
@@ -242,9 +243,9 @@ def rerun_job(
     """Re-run this job's analysis from the start (fresh head task, current pipeline image).
     Reuses the same job + inputs; re-ingestion is idempotent (find-or-create by job_id+name)."""
     job = _get_owned_job(public_id, db, current)
-    if not job.status.is_terminal:
+    if job.status != JobStatus.failed:
         raise HTTPException(status.HTTP_409_CONFLICT,
-                            "Job is still running; wait for it to finish before rerunning")
+                            "Only a failed job can be rerun.")
     # clear the previous run's result rows (S3 objects overwrite at the same keys on the new run)
     db.execute(delete(ResultFile).where(ResultFile.job_id == job.id))
     job.status = JobStatus.queued
@@ -305,6 +306,26 @@ def request_reanalysis(
         )
     except Exception:  # noqa: BLE001 — never fail the request because email is down
         logger.exception("Failed to send reanalysis-request email for job %s", job.public_id)
+
+
+@router.post("/{public_id}/report-error", status_code=status.HTTP_204_NO_CONTENT)
+def report_error(
+    public_id: str, payload: ErrorReport,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+) -> None:
+    """Email the admins about a FAILED job's error, with an optional note (best-effort; no DB record)."""
+    job = _get_owned_job(public_id, db, current)
+    if job.status != JobStatus.failed:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "You can only report an error for a failed job.")
+    admin_emails = list(db.scalars(select(User.email).where(User.role == UserRole.admin)))
+    try:
+        notify.send_error_reported(
+            admin_emails, job.kit.kit_code, job.public_id, current.email,
+            job.error_message or "(no error message)", payload.note,
+        )
+    except Exception:  # noqa: BLE001 — never fail the request because email is down
+        logger.exception("Failed to send error-report email for job %s", job.public_id)
 
 
 @router.get("/{public_id}/results", response_model=list[ResultDownload])

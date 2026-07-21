@@ -115,6 +115,11 @@ class ReanalysisRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class ErrorReport(BaseModel):
+    """Optional context when a user reports a failed job's error to the admins."""
+    note: str | None = Field(default=None, max_length=2000)
+
+
 class JobSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     public_id: str

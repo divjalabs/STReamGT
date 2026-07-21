@@ -84,6 +84,8 @@ export const api = {
   rerunJob: (publicId) => request(`/jobs/${publicId}/rerun`, { method: "POST" }),
   requestReanalysis: (publicId, reason) =>
     request(`/jobs/${publicId}/request-reanalysis`, { method: "POST", body: { reason } }),
+  reportJobError: (publicId, note) =>
+    request(`/jobs/${publicId}/report-error`, { method: "POST", body: { note } }),
   getResults: (publicId) => request(`/jobs/${publicId}/results`),
 
   // projects (animal/sample store)

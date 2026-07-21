@@ -97,6 +97,30 @@ def send_reanalysis_requested(
         _send(addr, subject, html, text)
 
 
+def send_error_reported(
+    admin_emails: list[str], kit_code: str, public_id: str, requester_email: str,
+    error: str, note: str | None = None,
+) -> None:
+    """Notify admins that a user reported a failed job's error."""
+    if not admin_emails:
+        return
+    url = _job_url(public_id)
+    subject = f"[{settings.app_name}] Error reported for kit {kit_code}"
+    note_text = f"\nNote from {requester_email}:\n{note}\n" if note else ""
+    note_html = f"<p><b>Note from {requester_email}:</b></p><pre>{note}</pre>" if note else ""
+    text = (
+        f"{requester_email} reported a failed job for kit {kit_code}.\n\n"
+        f"Error:\n{error}\n{note_text}\nJob: {url}\n"
+    )
+    html = (
+        f"<p><b>{requester_email}</b> reported a failed job for kit <b>{kit_code}</b>.</p>"
+        f"<p><b>Error:</b></p><pre>{error}</pre>{note_html}"
+        f'<p><a href="{url}">View the job</a></p>'
+    )
+    for addr in admin_emails:
+        _send(addr, subject, html, text)
+
+
 def send_password_reset(to: str, reset_url: str) -> None:
     subject = f"[{settings.app_name}] Password reset"
     text = (
