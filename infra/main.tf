@@ -109,11 +109,11 @@ resource "aws_ecs_task_definition" "head" {
     image     = var.backend_image
     essential = true
     command   = ["python", "-m", "app.worker.run_job"] # JOB_ID appended by RunTask override
+    # local_fargate: the head task runs the whole pipeline itself (Nextflow local executor,
+    # OBITools baked into the image). The awsbatch-only vars (NXF_BATCH_QUEUE/OBITOOLS_IMAGE/
+    # NXF_WORK) are intentionally absent — tasks.py only reads them when profile == awsbatch.
     environment = concat(local.common_env, [
-      { name = "NEXTFLOW_PROFILE", value = "awsbatch" },
-      { name = "NXF_BATCH_QUEUE", value = var.batch_queue },
-      { name = "OBITOOLS_IMAGE", value = var.obitools_image },
-      { name = "NXF_WORK", value = local.nxf_work },
+      { name = "NEXTFLOW_PROFILE", value = "local_fargate" },
       { name = "PIPELINE_DIR", value = "/app/pipeline" },
       { name = "JOB_SCRATCH_ROOT", value = "/scratch" },
     ])
@@ -221,7 +221,7 @@ resource "aws_cloudfront_distribution" "app" {
   ordered_cache_behavior {
     path_pattern             = "/api/*"
     target_origin_id         = "alb-api"
-    viewer_protocol_policy    = "redirect-to-https"
+    viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods           = ["GET", "HEAD"]
     cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
