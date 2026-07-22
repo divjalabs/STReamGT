@@ -107,6 +107,11 @@ class Kit(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Bumped on every row update — in practice the kit's last status change (sent → received →
+    # analysed → reanalyse). Surfaced on the client "My kits" list.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     panel: Mapped["PrimerPanel"] = relationship()
     tag_columns: Mapped[list["TagColumn"]] = relationship(

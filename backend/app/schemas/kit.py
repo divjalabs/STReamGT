@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.enums import ControlKind, KitStatus
@@ -67,6 +69,7 @@ class KitSummary(BaseModel):
     kit_code: str
     species: str | None
     status: KitStatus
+    updated_at: datetime | None = None   # last status change; None on older rows pre-migration
     tag_columns: list[TagColumnOut]
     assigned_user_ids: list[int]
     studies: list[KitStudyRef] = []      # studies this kit is attached to (transient; see api/kits)

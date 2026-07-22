@@ -28,8 +28,7 @@ export default function Home() {
 
       <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
         <Link to="/submit"><button>New analysis</button></Link>
-        <Link to="/jobs"><button className="secondary">My analyses</button></Link>
-        <Link to="/kits"><button className="secondary">My kits</button></Link>
+        <Link to="/kits"><button className="secondary">My kits &amp; analyses</button></Link>
       </div>
 
       <div className="section-head" style={{ marginTop: "1.8rem" }}>

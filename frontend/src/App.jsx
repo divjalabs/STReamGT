@@ -5,7 +5,6 @@ import Register from "./pages/Register.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
 import Home from "./pages/Home.jsx";
-import Jobs from "./pages/Jobs.jsx";
 import JobDetail from "./pages/JobDetail.jsx";
 import Submit from "./pages/Submit.jsx";
 import Kits from "./pages/Kits.jsx";
@@ -45,7 +44,6 @@ function Nav() {
       <Link to="/" className="brand">STReamGT</Link>
       <nav>
         <Link to="/">Home</Link>
-        <Link to="/jobs">My jobs</Link>
         <Link to="/kits">My kits</Link>
         <Link to="/projects">Projects</Link>
         {isAdmin && <span className="nav-sep">·</span>}
@@ -70,7 +68,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<Protected><Home /></Protected>} />
-        <Route path="/jobs" element={<Protected><Jobs /></Protected>} />
+        <Route path="/jobs" element={<Navigate to="/kits" replace />} />
         <Route path="/manuals/:slug" element={<Manual />} />
         <Route path="/kits" element={<Protected><Kits /></Protected>} />
         <Route path="/projects" element={<Protected><Projects /></Protected>} />

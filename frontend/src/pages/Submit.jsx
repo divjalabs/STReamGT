@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, uploadFile } from "../api/client.js";
 import SampleTable, { rowsToSampleText, filledWellCount, TOTAL_WELLS } from "../components/SampleTable.jsx";
 import TargetPicker from "../components/TargetPicker.jsx";
@@ -18,8 +18,9 @@ const newBatch = () => ({
 
 export default function Submit() {
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const [kits, setKits] = useState([]);
-  const [kitId, setKitId] = useState("");
+  const [kitId, setKitId] = useState(searchParams.get("kit") || "");
   const [fastqMode, setFastqMode] = useState("upload"); // "upload" | "ref"
   const [fq1, setFq1] = useState({ file: null, ref: "", pct: 0 });
   const [fq2, setFq2] = useState({ file: null, ref: "", pct: 0 });
@@ -51,7 +52,7 @@ export default function Submit() {
       const s = kit.studies[0];
       setTarget({ project_id: s.project_id, default_population_id: s.population_id ?? null, default_study_id: s.id });
     }
-  }, [kitId]);
+  }, [kit?.id]);   // fire once the kit resolves — incl. when ?kit= arrives before kits load
 
   const setBatch = (uid, patch) =>
     setBatches((bs) => bs.map((b) => (b.uid === uid ? { ...b, ...patch } : b)));
