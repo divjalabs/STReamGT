@@ -51,7 +51,23 @@ def list_kits(db: Session = Depends(get_db), current: User = Depends(get_current
         stmt = stmt.join(kit_access, kit_access.c.kit_id == Kit.id).where(
             kit_access.c.user_id == current.id
         )
-    return db.scalars(stmt).all()
+    kits = db.scalars(stmt).all()
+    # attach each kit's linked studies (for the Submit page's ingestion-target pre-fill)
+    from collections import defaultdict
+    from app.models import study_kits, Study
+    from app.schemas.kit import KitStudyRef
+    by_kit: dict[int, list] = defaultdict(list)
+    if kits:
+        rows = db.execute(
+            select(study_kits.c.kit_id, Study.id, Study.name, Study.project_id, Study.population_id)
+            .join(Study, Study.id == study_kits.c.study_id)
+            .where(study_kits.c.kit_id.in_([k.id for k in kits]))
+        ).all()
+        for kid, sid, sname, pid, popid in rows:
+            by_kit[kid].append(KitStudyRef(id=sid, name=sname, project_id=pid, population_id=popid))
+    for k in kits:
+        k.studies = by_kit.get(k.id, [])   # transient attr read by KitSummary
+    return kits
 
 
 @router.get("/{kit_id}", response_model=KitOut)

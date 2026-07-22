@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update, func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -27,6 +29,7 @@ from app.schemas.job import (
     JobSummary,
     ReanalysisRequest,
     ErrorReport,
+    IngestRequest,
     ResultDownload,
 )
 
@@ -91,6 +94,29 @@ def complete_upload(req: MultipartCompleteRequest, _: User = Depends(get_current
 
 
 # ---------- job lifecycle ----------
+
+def _resolve_target(db: Session, current: User, project_id, default_population_id, default_study_id):
+    """Validate an ingestion target: population/study need a project_id, the project must be
+    edit-accessible, and population/study must belong to it. Raises 422/403 on any violation."""
+    if project_id is None:
+        if default_population_id is not None or default_study_id is not None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                "population/study require a project_id")
+        return
+    from app.auth.access import get_accessible_project
+    from app.models import Population, Study
+    project = get_accessible_project(project_id, need_edit=True, db=db, user=current)
+    if default_population_id is not None:
+        pop = db.get(Population, default_population_id)
+        if pop is None or pop.project_id != project.id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                "default_population_id is not in this project")
+    if default_study_id is not None:
+        st = db.get(Study, default_study_id)
+        if st is None or st.project_id != project.id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                "default_study_id is not in this project")
+
 
 @router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 def create_job(
@@ -159,26 +185,11 @@ def create_job(
             payload.default_study_id = study.id
             auto_target = True
 
-    # Optional project target: validate edit access and that population/study belong to it.
-    if payload.project_id is not None and not auto_target:
-        from app.auth.access import get_accessible_project
-        from app.models import Population, Study
-        project = get_accessible_project(payload.project_id, need_edit=True, db=db, user=current)
-        if payload.default_population_id is not None:
-            pop = db.get(Population, payload.default_population_id)
-            if pop is None or pop.project_id != project.id:
-                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                    "default_population_id is not in this project")
-        if payload.default_study_id is not None:
-            st = db.get(Study, payload.default_study_id)
-            if st is None or st.project_id != project.id:
-                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                    "default_study_id is not in this project")
-    elif payload.project_id is None and (
-        payload.default_population_id is not None or payload.default_study_id is not None
-    ):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            "population/study require a project_id")
+    # Optional project target: validate it (the auto_target path is already trusted via the
+    # kit<->study attachment, which required project edit rights when it was created).
+    if not auto_target:
+        _resolve_target(db, current, payload.project_id,
+                        payload.default_population_id, payload.default_study_id)
 
     public_id = str(uuid.uuid4())
     job = Job(
@@ -326,6 +337,54 @@ def report_error(
         )
     except Exception:  # noqa: BLE001 — never fail the request because email is down
         logger.exception("Failed to send error-report email for job %s", job.public_id)
+
+
+_INGEST_KINDS = {
+    ResultKind.consensus: "consensus_path",
+    ResultKind.reference_alleles: "reference_alleles_path",
+    ResultKind.genotypes: "genotypes_path",
+    ResultKind.positions: "positions_path",
+}
+
+
+@router.post("/{public_id}/ingest")
+def ingest_job(
+    public_id: str, payload: IngestRequest,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    """Assign a completed job to a project/population/study and (re-)ingest its stored results into
+    the animal/sample store — no pipeline re-run. Idempotent (samples keyed by job_id + name)."""
+    from app.models import Sample
+    from app.services.ingestion import ingest_job_outputs
+
+    job = _get_owned_job(public_id, db, current)
+    if job.status != JobStatus.succeeded:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Only a succeeded job can be ingested into a project.")
+    _resolve_target(db, current, payload.project_id,
+                    payload.default_population_id, payload.default_study_id)
+
+    job.project_id = payload.project_id
+    job.default_population_id = payload.default_population_id
+    job.default_study_id = payload.default_study_id
+    # move any samples already ingested for this job to the new target
+    db.execute(update(Sample).where(Sample.job_id == job.id).values(
+        project_id=payload.project_id, population_id=payload.default_population_id,
+        study_id=payload.default_study_id))
+
+    rows = db.scalars(select(ResultFile).where(
+        ResultFile.job_id == job.id, ResultFile.kind.in_(list(_INGEST_KINDS)))).all()
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = {}
+        for r in rows:
+            dest = os.path.join(tmp, r.filename or f"{r.kind.value}.txt")
+            storage.download_file(r.object_key, dest)
+            paths[_INGEST_KINDS[r.kind]] = dest
+        summary = ingest_job_outputs(db, job, **paths)
+    db.commit()
+
+    n_samples = db.scalar(select(func.count()).select_from(Sample).where(Sample.job_id == job.id))
+    return {"samples": n_samples, "population_id": payload.default_population_id, "detail": summary}
 
 
 @router.get("/{public_id}/results", response_model=list[ResultDownload])

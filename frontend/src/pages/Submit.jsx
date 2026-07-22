@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, uploadFile } from "../api/client.js";
 import SampleTable, { rowsToSampleText, filledWellCount, TOTAL_WELLS } from "../components/SampleTable.jsx";
+import TargetPicker from "../components/TargetPicker.jsx";
+
+const EMPTY_TARGET = { project_id: null, default_population_id: null, default_study_id: null };
 
 let batchSeq = 1;
 const newBatch = () => ({
@@ -22,6 +25,7 @@ export default function Submit() {
   const [fq2, setFq2] = useState({ file: null, ref: "", pct: 0 });
   const [expectedReads, setExpectedReads] = useState(10000000);
   const [batches, setBatches] = useState([newBatch()]);
+  const [target, setTarget] = useState(EMPTY_TARGET);
   const [jobs, setJobs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -42,6 +46,11 @@ export default function Submit() {
     if (!kit) return;
     const all = kit.tag_columns.map((t) => t.name);
     setBatches((bs) => bs.map((b, i) => ({ ...b, selectedTags: i === 0 ? all : [] })));
+    // Pre-fill the ingestion target from the kit's linked study (if exactly one).
+    if (kit.studies && kit.studies.length === 1) {
+      const s = kit.studies[0];
+      setTarget({ project_id: s.project_id, default_population_id: s.population_id ?? null, default_study_id: s.id });
+    }
   }, [kitId]);
 
   const setBatch = (uid, patch) =>
@@ -106,15 +115,21 @@ export default function Submit() {
         outBatches.push(out);
       }
 
-      // 3. Create the job.
-      const job = await api.createJob({
+      // 3. Create the job (optional ingestion target routes results into a project on success).
+      const payload = {
         kit_id: kit.id,
         fastq_source,
         fastq1_ref,
         fastq2_ref,
         expected_read_number: Number(expectedReads) || null,
         batches: outBatches,
-      });
+      };
+      if (target.project_id) {
+        payload.project_id = target.project_id;
+        payload.default_population_id = target.default_population_id;
+        payload.default_study_id = target.default_study_id;
+      }
+      const job = await api.createJob(payload);
       nav(`/jobs/${job.public_id}`);
     } catch (e) {
       setErr(e.message);
@@ -145,6 +160,14 @@ export default function Submit() {
           {kit && kitBusy && (
             <p className="error">⚠️ A job for this kit is already running. Wait for it to finish before submitting again.</p>
           )}
+        </section>
+
+        <section className="card">
+          <h2>Ingest target <span className="muted small">(optional — for consensus &amp; matching)</span></h2>
+          <p className="muted small">On success, the samples are ingested into this project/population so
+            you can run consensus and matching. Leave blank to only produce result files.
+            {kit && kit.studies && kit.studies.length === 1 && " Pre-filled from this kit's linked study."}</p>
+          <TargetPicker value={target} onChange={setTarget} disabled={busy} />
         </section>
 
         <section className="card">

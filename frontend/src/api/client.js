@@ -82,6 +82,7 @@ export const api = {
   confirmJob: (publicId, proceed) =>
     request(`/jobs/${publicId}/confirm`, { method: "POST", body: { proceed } }),
   rerunJob: (publicId) => request(`/jobs/${publicId}/rerun`, { method: "POST" }),
+  ingestJob: (publicId, body) => request(`/jobs/${publicId}/ingest`, { method: "POST", body }),
   requestReanalysis: (publicId, reason) =>
     request(`/jobs/${publicId}/request-reanalysis`, { method: "POST", body: { reason } }),
   reportJobError: (publicId, note) =>

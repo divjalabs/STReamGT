@@ -274,3 +274,69 @@ def test_init_upload_small_uses_put(client, user_token):
     assert r.status_code == 200
     body = r.json()
     assert body["method"] == "put" and body["put_url"] and body["key"].endswith("HRM01.xlsx")
+
+
+def test_kit_summary_lists_attached_studies(client, catalog, admin_token, user_token):
+    pid = client.post("/api/projects", json={"name": "P"}, headers=bearer(user_token)).json()["id"]
+    pop = client.post(f"/api/projects/{pid}/populations", json={"name": "Pop"},
+                      headers=bearer(user_token)).json()["id"]
+    study = client.post(f"/api/projects/{pid}/studies", json={"name": "S", "population_id": pop},
+                        headers=bearer(user_token)).json()["id"]
+    kit_id = _make_kit(client, admin_token, assigned_ids=[user_id("user@x.com")])
+    assert client.post(f"/api/studies/{study}/kits/{kit_id}", headers=bearer(user_token)).status_code == 200
+
+    k = next(k for k in client.get("/api/kits", headers=bearer(user_token)).json() if k["id"] == kit_id)
+    assert [s["id"] for s in k["studies"]] == [study]
+    assert k["studies"][0]["population_id"] == pop
+
+
+def test_ingest_completed_job_into_project(client, catalog, admin_token, user_token, no_enqueue, monkeypatch):
+    from tests.test_projects_ingestion import CONSENSUS, REFERENCE, GENOTYPES, POSITIONS
+    from app.db import SessionLocal
+    from app.models import Job, JobStatus, ResultFile, ResultKind
+    from sqlalchemy import select
+
+    pid = client.post("/api/projects", json={"name": "P"}, headers=bearer(user_token)).json()["id"]
+    pop = client.post(f"/api/projects/{pid}/populations", json={"name": "Pop"},
+                      headers=bearer(user_token)).json()["id"]
+    kit_id = _make_kit(client, admin_token, assigned_ids=[user_id("user@x.com")])
+    pub = client.post("/api/jobs", json=job_payload(kit_id), headers=bearer(user_token)).json()["public_id"]
+
+    content = {"consensus.txt": CONSENSUS, "reference.txt": REFERENCE,
+               "genotypes.txt": GENOTYPES, "positions.txt": POSITIONS}
+
+    def fake_dl(key, dest):
+        with open(dest, "w") as fh:
+            fh.write(content[key])
+    monkeypatch.setattr("app.api.jobs.storage.download_file", fake_dl)
+
+    with SessionLocal() as db:
+        job = db.scalar(select(Job).where(Job.public_id == pub))
+        job.status = JobStatus.succeeded
+        for kind, fn in [(ResultKind.consensus, "consensus.txt"), (ResultKind.reference_alleles, "reference.txt"),
+                         (ResultKind.genotypes, "genotypes.txt"), (ResultKind.positions, "positions.txt")]:
+            db.add(ResultFile(job_id=job.id, kind=kind, object_key=fn, filename=fn))
+        db.commit()
+
+    # can't ingest a non-succeeded job
+    with SessionLocal() as db:
+        j = db.scalar(select(Job).where(Job.public_id == pub)); j.status = JobStatus.running; db.commit()
+    assert client.post(f"/api/jobs/{pub}/ingest", json={"project_id": pid},
+                       headers=bearer(user_token)).status_code == 409
+    with SessionLocal() as db:
+        j = db.scalar(select(Job).where(Job.public_id == pub)); j.status = JobStatus.succeeded; db.commit()
+
+    # population outside the project -> 422
+    other = client.post("/api/projects", json={"name": "Other"}, headers=bearer(user_token)).json()["id"]
+    opop = client.post(f"/api/projects/{other}/populations", json={"name": "X"},
+                       headers=bearer(user_token)).json()["id"]
+    assert client.post(f"/api/jobs/{pub}/ingest", json={"project_id": pid, "default_population_id": opop},
+                       headers=bearer(user_token)).status_code == 422
+
+    # ingest for real -> samples land in the population
+    r = client.post(f"/api/jobs/{pub}/ingest", json={"project_id": pid, "default_population_id": pop},
+                    headers=bearer(user_token))
+    assert r.status_code == 200, r.text
+    assert r.json()["samples"] == 2
+    samples = client.get(f"/api/populations/{pop}/samples", headers=bearer(user_token)).json()
+    assert {s["name"] for s in samples} == {"S1", "S2"}

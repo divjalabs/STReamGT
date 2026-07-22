@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
+import TargetPicker from "../components/TargetPicker.jsx";
 
 const STEPS = ["queued", "staging", "running", "uploading", "succeeded"];
 const REPORT_KINDS = ["html_report", "consensus_report"];
+const EMPTY_TARGET = { project_id: null, default_population_id: null, default_study_id: null };
 
 export default function JobDetail() {
   const { publicId } = useParams();
@@ -20,6 +22,9 @@ export default function JobDetail() {
   const [errNote, setErrNote] = useState("");
   const [errReportSent, setErrReportSent] = useState(false);
   const [errReportErr, setErrReportErr] = useState(null);
+  const [assignTarget, setAssignTarget] = useState(EMPTY_TARGET);
+  const [assignMsg, setAssignMsg] = useState(null);
+  const [assignErr, setAssignErr] = useState(null);
 
   const confirm = async (proceed) => {
     setBusy(true);
@@ -39,6 +44,18 @@ export default function JobDetail() {
       setJob(j); setResults([]); setTick((t) => t + 1);   // restart polling from queued
     } catch (e) {
       setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const assign = async () => {
+    setBusy(true); setAssignErr(null); setAssignMsg(null);
+    try {
+      const r = await api.ingestJob(publicId, assignTarget);
+      setAssignMsg({ n: r.samples, pop: assignTarget.default_population_id });
+    } catch (e) {
+      setAssignErr(e.message);
     } finally {
       setBusy(false);
     }
@@ -170,6 +187,27 @@ export default function JobDetail() {
               </li>
             ))}
           </ul>
+
+          <div className="card">
+            <h2>Assign to project <span className="muted small">(for consensus &amp; matching)</span></h2>
+            <p className="muted small">Ingest this run's samples into a project/population/study — no
+              re-run. Pick a <b>population</b> to make the samples available for consensus and matching.</p>
+            {assignErr && <p className="error">{assignErr}</p>}
+            {assignMsg ? (
+              <p className="ok">✓ Ingested {assignMsg.n} sample(s).{" "}
+                {assignMsg.pop && <Link to={`/populations/${assignMsg.pop}/samples`}>View samples →</Link>}
+              </p>
+            ) : (
+              <>
+                <TargetPicker value={assignTarget} onChange={setAssignTarget} disabled={busy} />
+                <div className="submit-bar">
+                  <button type="button" disabled={busy || !assignTarget.project_id} onClick={assign}>
+                    {busy ? "Ingesting…" : "Ingest into project"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
 
           <div className="card">
             <h2>Need another run?</h2>

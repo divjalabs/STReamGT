@@ -120,6 +120,13 @@ class ErrorReport(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
+class IngestRequest(BaseModel):
+    """Assign a completed job to a project target and (re-)ingest its stored results."""
+    project_id: int
+    default_population_id: int | None = None
+    default_study_id: int | None = None
+
+
 class JobSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     public_id: str

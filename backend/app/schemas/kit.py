@@ -50,6 +50,15 @@ class KitUpdate(BaseModel):
     assigned_user_ids: list[int] | None = None
 
 
+class KitStudyRef(BaseModel):
+    """A study this kit is attached to — lets the Submit page pre-fill the ingestion target."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    project_id: int
+    population_id: int | None
+
+
 class KitSummary(BaseModel):
     """Lightweight view for the kit picker / client kit list / admin table."""
 
@@ -60,6 +69,7 @@ class KitSummary(BaseModel):
     status: KitStatus
     tag_columns: list[TagColumnOut]
     assigned_user_ids: list[int]
+    studies: list[KitStudyRef] = []      # studies this kit is attached to (transient; see api/kits)
 
 
 class KitOut(BaseModel):

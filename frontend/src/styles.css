@@ -262,6 +262,11 @@ button.danger-link { background: none; color: var(--err); padding: .1rem .2rem; 
 /* --- sample page: population/study transfer --- */
 .transfer-bar { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin: .8rem 0; }
 
+/* --- ingestion target picker (Submit + Job page) --- */
+.target-picker { display: flex; gap: 1rem; flex-wrap: wrap; margin: .5rem 0; }
+.target-picker label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--muted); }
+.target-picker select { min-width: 12rem; }
+
 /* --- sample page: full-width workspace --- */
 .sample-fullwidth { padding: 0 1.25rem 2rem; }
 .sample-fullwidth h1 { margin: .3rem 0; }
