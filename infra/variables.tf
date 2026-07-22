@@ -37,5 +37,5 @@ variable "api_cpu" { default = "512" }
 variable "api_memory" { default = "1024" }
 # The head task runs the WHOLE pipeline in one Fargate task (local_fargate profile), so it's large.
 variable "head_cpu" { default = "8192" }
-variable "head_memory" { default = "16384" }
+variable "head_memory" { default = "32768" } # obiuniq per-locus dereplication is memory-heavy
 variable "head_ephemeral_gb" { default = 200 } # Nextflow work dir + obiuniq /tmp dereplication chunks
