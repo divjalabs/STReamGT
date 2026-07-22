@@ -163,8 +163,8 @@ export default function Submit() {
         </section>
 
         <section className="card">
-          <h2>Ingest target <span className="muted small">(optional — for consensus &amp; matching)</span></h2>
-          <p className="muted small">On success, the samples are ingested into this project/population so
+          <h2>Assign to project <span className="muted small">(optional — for consensus &amp; matching)</span></h2>
+          <p className="muted small">On success, the samples are assigned to this project/population so
             you can run consensus and matching. Leave blank to only produce result files.
             {kit && kit.studies && kit.studies.length === 1 && " Pre-filled from this kit's linked study."}</p>
           <TargetPicker value={target} onChange={setTarget} disabled={busy} />

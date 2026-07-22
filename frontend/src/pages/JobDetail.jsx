@@ -190,11 +190,11 @@ export default function JobDetail() {
 
           <div className="card">
             <h2>Assign to project <span className="muted small">(for consensus &amp; matching)</span></h2>
-            <p className="muted small">Ingest this run's samples into a project/population/study — no
+            <p className="muted small">Assign this run's samples to a project/population/study — no
               re-run. Pick a <b>population</b> to make the samples available for consensus and matching.</p>
             {assignErr && <p className="error">{assignErr}</p>}
             {assignMsg ? (
-              <p className="ok">✓ Ingested {assignMsg.n} sample(s).{" "}
+              <p className="ok">✓ Assigned {assignMsg.n} sample(s).{" "}
                 {assignMsg.pop && <Link to={`/populations/${assignMsg.pop}/samples`}>View samples →</Link>}
               </p>
             ) : (
@@ -202,7 +202,7 @@ export default function JobDetail() {
                 <TargetPicker value={assignTarget} onChange={setAssignTarget} disabled={busy} />
                 <div className="submit-bar">
                   <button type="button" disabled={busy || !assignTarget.project_id} onClick={assign}>
-                    {busy ? "Ingesting…" : "Ingest into project"}
+                    {busy ? "Assigning…" : "Assign to project"}
                   </button>
                 </div>
               </>
