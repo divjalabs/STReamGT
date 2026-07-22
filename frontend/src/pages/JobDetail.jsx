@@ -25,6 +25,7 @@ export default function JobDetail() {
   const [assignTarget, setAssignTarget] = useState(EMPTY_TARGET);
   const [assignMsg, setAssignMsg] = useState(null);
   const [assignErr, setAssignErr] = useState(null);
+  const [kitStudy, setKitStudy] = useState(null);   // the kit's linked study, for the pre-fill hint
 
   const confirm = async (proceed) => {
     setBusy(true);
@@ -104,6 +105,23 @@ export default function JobDetail() {
     poll();
     return () => clearTimeout(timer);
   }, [publicId, tick]);
+
+  // If this job's kit is linked to a single study, pre-fill the "Assign to project" target from it.
+  useEffect(() => {
+    if (!job?.kit_id) return;
+    api.listKits()
+      .then((kits) => kits.find((k) => k.id === job.kit_id))
+      .then((k) => {
+        if (k?.studies?.length === 1) {
+          const s = k.studies[0];
+          setKitStudy(s);
+          setAssignTarget((t) => (t.project_id ? t : {
+            project_id: s.project_id, default_population_id: s.population_id ?? null, default_study_id: s.id,
+          }));
+        }
+      })
+      .catch(() => {});
+  }, [job?.kit_id]);
 
   if (err) return <div className="container"><p className="error">{err}</p></div>;
   if (!job) return <div className="container">Loading…</div>;
@@ -192,6 +210,9 @@ export default function JobDetail() {
             <h2>Assign to project <span className="muted small">(for consensus &amp; matching)</span></h2>
             <p className="muted small">Assign this run's samples to a project/population/study — no
               re-run. Pick a <b>population</b> to make the samples available for consensus and matching.</p>
+            {kitStudy && !assignMsg && (
+              <p className="muted small">Pre-filled from this kit's linked study <b>{kitStudy.name}</b>.</p>
+            )}
             {assignErr && <p className="error">{assignErr}</p>}
             {assignMsg ? (
               <p className="ok">✓ Assigned {assignMsg.n} sample(s).{" "}
