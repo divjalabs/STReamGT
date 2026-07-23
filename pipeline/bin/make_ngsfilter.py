@@ -3,7 +3,8 @@
 # use for testing only! /Users/elena/miniconda3/envs/ngs_pipelines/bin/python
 
 # input columns: kit_id	sample_path	tags	tags_path	primers_path
-#output columns: experiment	sample	sample_tag	forward_primer	reverse_primer, where sample name is HRM16C__1__PP1
+#output columns: experiment	sample	sample_tag	forward_primer	reverse_primer	control, where sample name is HRM16C__1__PP1
+# the 6th "control" column encodes: type=control;control_type=pcr;  |  type=sample;  |  type=NA
 
 import argparse
 import pandas as pd
@@ -63,22 +64,39 @@ def main():
     tagcombo_long = tagcombo.melt(id_vars = "Position", var_name="plate", value_name="tags") # transform to the long format
     
     samples = pd.read_excel(args.sample_path)
+    # accept friendly column headers from the downloadable plate template
+    samples = samples.rename(columns={
+        "Position": "TPositionId", "Sample Name": "SPositionBC", "Control type": "control_type",
+    })
     samples["Position"] = samples["TPositionId"].apply(plate_to_number)
     samples["Name"] = samples["SPositionBC"].astype(str).str.cat(samples["Position"].astype(str), sep="__")
-    samples = samples[["Name", "Position"]] 
-    
+    # control_type is optional in the sample sheet (empty for ordinary samples)
+    if "control_type" not in samples.columns:
+        samples["control_type"] = ""
+    samples["control_type"] = samples["control_type"].fillna("").astype(str).str.strip()
+    samples = samples[["Name", "Position", "control_type"]]
+
     # Add tagcombo
     samples_tags = tagcombo_long.merge(samples, on="Position", how="left")
     samples_tags["Name"] = samples_tags["Name"].str.cat(samples_tags["plate"].astype(str), sep="__")
-    
-    
+
+    # 6th column: type=control;control_type=X; for control wells, type=sample; for named samples, else NA
+    def _control_col(row):
+        ct = str(row.get("control_type") or "").strip().lower()
+        if ct and ct not in ("sample", "na", "nan"):
+            return f"type=control;control_type={ct};"
+        if pd.notna(row["Name"]):
+            return "type=sample;"
+        return "type=NA"
+    samples_tags["control"] = samples_tags.apply(_control_col, axis=1)
+
     # Add primers
     primers["key"] = 1
     samples_tags["key"] = 1
     ngsfilter = primers.merge(samples_tags, on="key").drop(columns="key")
-    ngsfilter = ngsfilter[["locus", "Name", "tags", "primerF", "primerR"]]
-    ngsfilter.columns = ["experiment",	"sample",	"sample_tag",	"forward_primer",	"reverse_primer"]
-    
+    ngsfilter = ngsfilter[["locus", "Name", "tags", "primerF", "primerR", "control"]]
+    ngsfilter.columns = ["experiment",	"sample",	"sample_tag",	"forward_primer",	"reverse_primer",	"control"]
+
 
     ngsfilter.to_csv(f"{args.kit_id}_ngsfilter_{args.tags}.csv", index=False)
     

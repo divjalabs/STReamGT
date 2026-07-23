@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
+import ControlPlate from "../../components/ControlPlate.jsx";
 
 const STATUSES = ["sent", "received", "analysed", "reanalyse"];
 const STATUS_CLASS = { analysed: "ok", reanalyse: "warn", received: "", sent: "muted" };
@@ -50,6 +51,8 @@ export default function AdminKits() {
   const [panelId, setPanelId] = useState("");
   const [tags, setTags] = useState([]);
   const [controlPattern, setControlPattern] = useState("blank");
+  const [controls, setControls] = useState([]);        // [{uid, pos, kind, name}]
+  const [templates, setTemplates] = useState([]);
   const [assignees, setAssignees] = useState([]);
   const [description, setDescription] = useState("");
 
@@ -63,7 +66,31 @@ export default function AdminKits() {
     api.listPanels().then(setPanels).catch((e) => setErr(e.message));
     api.getTagLayout().then(setLayout).catch((e) => setErr(e.message));
     api.listUsers().then(setUsers).catch((e) => setErr(e.message));
+    api.listControlTemplates().then(setTemplates).catch(() => {});
   }, []);
+
+  let tplSeq = 0;
+  const applyTemplate = (id) => {
+    const tpl = templates.find((t) => String(t.id) === String(id));
+    if (!tpl) return;
+    setControls((tpl.positions || []).map((p) => ({
+      uid: `t${tplSeq++}`, pos: p.position, kind: p.kind, name: p.name || "",
+    })));
+  };
+  const saveTemplate = async () => {
+    if (controls.length === 0) return setErr("Add some control positions before saving a template.");
+    const name = prompt("Template name:");
+    if (!name || !name.trim()) return;
+    try {
+      const tpl = await api.createControlTemplate({
+        name: name.trim(),
+        positions: controls.map((c) => ({
+          kind: c.kind, position: c.pos, ...(c.name?.trim() ? { name: c.name.trim() } : {}),
+        })),
+      });
+      setTemplates((ts) => [...ts, tpl].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (e) { setErr(e.message); }
+  };
 
   const emailFor = (id) => users.find((u) => u.id === id)?.email || `#${id}`;
   const toggleTag = (name) => setTags(tags.includes(name) ? tags.filter((t) => t !== name) : [...tags, name]);
@@ -76,10 +103,15 @@ export default function AdminKits() {
     if (!panelId) return setErr("Choose a primer panel.");
     if (tags.length === 0) return setErr("Select at least one tag column.");
     setBusy(true);
+    const controlsPayload = [];
+    if (controlPattern.trim())
+      controlsPayload.push({ name_pattern: controlPattern.trim(), kind: "sequencing" });
+    for (const c of controls)
+      controlsPayload.push({ kind: c.kind, position: c.pos, name: c.name?.trim() || null });
     const base = {
       panel_id: Number(panelId),
       selected_tags: tags,
-      controls: controlPattern.trim() ? [{ name_pattern: controlPattern.trim(), kind: "negative" }] : [],
+      controls: controlsPayload,
       assigned_user_ids: assignees,
       description: description || null,
     };
@@ -90,7 +122,7 @@ export default function AdminKits() {
     }
     setBusy(false);
     if (failed.length) setErr("Some kits failed — " + failed.join(" | "));
-    else { setCodes(""); setPanelId(""); setTags([]); setAssignees([]); setDescription(""); }
+    else { setCodes(""); setPanelId(""); setTags([]); setAssignees([]); setDescription(""); setControls([]); }
     load();
   };
 
@@ -140,6 +172,20 @@ export default function AdminKits() {
           <label>Negative control name pattern
             <input value={controlPattern} onChange={(e) => setControlPattern(e.target.value)} placeholder="blank" />
           </label>
+          <fieldset>
+            <legend>Control positions</legend>
+            <div className="row" style={{ flexWrap: "wrap", gap: ".5rem", alignItems: "center" }}>
+              <label className="inline-label">Apply template
+                <select defaultValue="" onChange={(e) => { applyTemplate(e.target.value); e.target.value = ""; }}>
+                  <option value="">— choose —</option>
+                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+              <button type="button" className="secondary" onClick={saveTemplate}>Save positions as template</button>
+              <span className="muted small">Names auto-generate as {"{kit}_{type}_{well}"} unless set.</span>
+            </div>
+            <ControlPlate value={controls} onChange={setControls} kitCode={codes.split(/[\s,]+/)[0] || "KIT"} />
+          </fieldset>
           <fieldset>
             <legend>Assign to users</legend>
             <AssigneePicker users={users} value={assignees} onChange={setAssignees} />

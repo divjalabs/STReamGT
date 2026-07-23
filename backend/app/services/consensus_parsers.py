@@ -101,6 +101,7 @@ class PositionRow:
     run_name: str | None
     position: int | None
     tag_combo: str | None
+    control_type: str | None = None   # from the pipeline's control_type column (pcr/sequencing/…)
 
 
 def parse_consensus(text: str) -> list[ConsensusRow]:
@@ -181,5 +182,6 @@ def parse_positions(text: str) -> list[PositionRow]:
             run_name=_s(r.get("Run_Name")),
             position=_i(r.get("Position")),
             tag_combo=_s(r.get("TagCombo")),
+            control_type=_s(r.get("control_type")),
         ))
     return out

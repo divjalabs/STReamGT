@@ -35,6 +35,24 @@ async function request(path, { method = "GET", body, form } = {}) {
   return res.json();
 }
 
+/** Fetch an authenticated binary endpoint and trigger a browser download. */
+async function downloadBlob(path, filename) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`/api${path}`, { headers });
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename || "download";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   // auth
   register: (email, password, organisation) =>
@@ -62,6 +80,12 @@ export const api = {
   updateKit: (id, body) => request(`/kits/${id}`, { method: "PATCH", body }),
   deleteKit: (id) => request(`/kits/${id}`, { method: "DELETE" }),
   getTagLayout: () => request("/kits/tag-layout"),
+  downloadKitTemplate: (id, filename) => downloadBlob(`/kits/${id}/control-template.xlsx`, filename),
+
+  // control-position templates (admin)
+  listControlTemplates: () => request("/control-templates"),
+  createControlTemplate: (payload) => request("/control-templates", { method: "POST", body: payload }),
+  deleteControlTemplate: (id) => request(`/control-templates/${id}`, { method: "DELETE" }),
 
   // panels (admin)
   listPanels: () => request("/panels"),

@@ -30,8 +30,27 @@ class PrimerType(str, enum.Enum):
 
 
 class ControlKind(str, enum.Enum):
-    negative = "negative"
-    positive = "positive"
+    positive = "positive"          # positive control — excluded from the noise threshold
+    sequencing = "sequencing"      # sequencing / blank negative control
+    pcr = "pcr"                    # PCR negative control
+    extraction = "extraction"      # extraction negative control
+    negative = "negative"          # legacy — pre-typed negative control
+
+    @property
+    def is_negative_control(self) -> bool:
+        """All non-positive controls feed the progressive noise threshold."""
+        return self is not ControlKind.positive
+
+    @property
+    def name_token(self) -> str:
+        """Short token used in auto-generated control names ({kit}_{token}_{well})."""
+        return {
+            ControlKind.positive: "pos",
+            ControlKind.sequencing: "blank",
+            ControlKind.pcr: "pcr",
+            ControlKind.extraction: "ext",
+            ControlKind.negative: "blank",
+        }[self]
 
 
 class FastqSource(str, enum.Enum):

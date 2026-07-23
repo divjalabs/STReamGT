@@ -83,6 +83,25 @@ class TagLayout(Base):
     )
 
 
+class ControlTemplate(Base):
+    """A reusable plate control layout an admin can apply when registering a kit.
+
+    Kit-agnostic: stores only kind + well (+ optional explicit name); per-kit names are
+    regenerated as `{kit_code}_{kind}_{position}` when the template is applied.
+    """
+
+    __tablename__ = "control_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # [{"kind": "pcr", "position": "A1", "name": null}, ...]
+    positions: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
+
+
 class Kit(Base):
     """A lab kit assigned to client(s): a chosen primer panel + a selected subset of tag columns.
 
@@ -118,7 +137,7 @@ class Kit(Base):
         back_populates="kit", cascade="all, delete-orphan", order_by="TagColumn.ordinal"
     )
     controls: Mapped[list["Control"]] = relationship(
-        back_populates="kit", cascade="all, delete-orphan"
+        back_populates="kit", cascade="all, delete-orphan", order_by="Control.position"
     )
     # Users granted access to this kit (non-admins). Admins see all kits regardless.
     users: Mapped[list["User"]] = relationship(secondary=kit_access)  # noqa: F821
@@ -145,15 +164,23 @@ class TagColumn(Base):
 
 
 class Control(Base):
-    """Name pattern identifying a control sample (maps to parameters.json negative_name)."""
+    """A control defined on a kit — either pattern-based (legacy substring) or position-based.
+
+    Position-based controls carry a plate well (e.g. "A1"), a resolved name
+    (`{kit_code}_{kind}_{position}`), and a type; they pre-fill the submit plate and their type
+    flows through the run (threshold, report, sample flagging). Pattern-based controls have only
+    a `name_pattern` (kept for back-compat with the substring negative detection).
+    """
 
     __tablename__ = "controls"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     kit_id: Mapped[int] = mapped_column(ForeignKey("kits.id"), index=True, nullable=False)
-    name_pattern: Mapped[str] = mapped_column(String(128), nullable=False)  # e.g. "blank"
+    name_pattern: Mapped[str | None] = mapped_column(String(128))          # e.g. "blank" (legacy)
+    position: Mapped[str | None] = mapped_column(String(8))                # plate well, e.g. "A1"
+    name: Mapped[str | None] = mapped_column(String(255))                  # resolved control name
     kind: Mapped[ControlKind] = mapped_column(
-        SAEnum(ControlKind, name="control_kind"), default=ControlKind.negative, nullable=False
+        SAEnum(ControlKind, name="control_kind"), default=ControlKind.sequencing, nullable=False
     )
 
     kit: Mapped["Kit"] = relationship(back_populates="controls")

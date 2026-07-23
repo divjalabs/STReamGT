@@ -108,46 +108,51 @@ def find_result(results: list[CollectedResult], kind: ResultKind) -> str | None:
 
 
 def samples_text_to_rows(text: str) -> list[dict]:
-    """Parse pasted sample text into TPositionId/SPositionBC rows.
+    """Parse pasted sample text into TPositionId/SPositionBC(/control_type) rows.
 
-    Accepts CSV/TSV/whitespace with two fields per line: position (e.g. A1) and sample name.
-    A header line containing 'position' (any case) is skipped.
+    Accepts CSV/TSV/whitespace with two or three fields per line: position (e.g. A1), sample name,
+    and an optional control_type (empty for ordinary samples). A header line containing 'position'
+    (any case) is skipped.
     """
     rows: list[dict] = []
     for raw in text.strip().splitlines():
         line = raw.strip()
         if not line:
             continue
-        parts = [p.strip() for p in line.replace("\t", ",").split(",") if p.strip()]
-        if len(parts) < 2:
-            # tolerate whitespace separation
+        parts = [p.strip() for p in line.replace("\t", ",").split(",")]
+        # drop trailing empties but keep an interior empty control_type field
+        while parts and parts[-1] == "":
+            parts.pop()
+        if len([p for p in parts if p]) < 2:
             parts = line.split()
         if len(parts) < 2:
             raise ValueError(f"cannot parse sample line: {raw!r} (need position and name)")
         pos, name = parts[0], parts[1]
+        control_type = parts[2].strip() if len(parts) >= 3 else ""
         if pos.lower() == "tpositionid" or pos.lower() == "position":
             continue
-        rows.append({"TPositionId": pos, "SPositionBC": name})
+        rows.append({"TPositionId": pos, "SPositionBC": name, "control_type": control_type})
     if not rows:
         raise ValueError("no sample rows parsed from pasted text")
     return rows
 
 
 def write_sample_xlsx(rows: list[dict], dest_path: str) -> None:
-    """Write TPositionId/SPositionBC rows to an .xlsx the pipeline's make_ngsfilter.py reads."""
+    """Write TPositionId/SPositionBC/control_type rows to an .xlsx make_ngsfilter.py reads."""
     from openpyxl import Workbook
 
     wb = Workbook()
     ws = wb.active
-    ws.append(["TPositionId", "SPositionBC"])
+    ws.append(["TPositionId", "SPositionBC", "control_type"])
     for r in rows:
-        ws.append([r["TPositionId"], r["SPositionBC"]])
+        ws.append([r["TPositionId"], r["SPositionBC"], r.get("control_type", "")])
     wb.save(dest_path)
 
 
 def sample_rows_to_csv_preview(rows: list[dict]) -> str:
     buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=["TPositionId", "SPositionBC"])
+    w = csv.DictWriter(buf, fieldnames=["TPositionId", "SPositionBC", "control_type"],
+                       extrasaction="ignore")
     w.writeheader()
     w.writerows(rows)
     return buf.getvalue()

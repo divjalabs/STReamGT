@@ -71,10 +71,16 @@ def test_count_fastq_reads(tmp_path):
 
 def test_samples_text_to_rows_variants():
     rows = pr.samples_text_to_rows("TPositionId,SPositionBC\nA1,SAMP1\nB2,SAMP2\n")
-    assert rows == [{"TPositionId": "A1", "SPositionBC": "SAMP1"},
-                    {"TPositionId": "B2", "SPositionBC": "SAMP2"}]
+    assert rows == [{"TPositionId": "A1", "SPositionBC": "SAMP1", "control_type": ""},
+                    {"TPositionId": "B2", "SPositionBC": "SAMP2", "control_type": ""}]
     # tab and whitespace separated, header skipped
     assert pr.samples_text_to_rows("A1\tS1\nC3 S3")[0]["SPositionBC"] == "S1"
+
+
+def test_samples_text_to_rows_control_type():
+    rows = pr.samples_text_to_rows("A1,SAMP1,\nB2,KIT_pcr_B2,pcr\n")
+    assert rows[0] == {"TPositionId": "A1", "SPositionBC": "SAMP1", "control_type": ""}
+    assert rows[1] == {"TPositionId": "B2", "SPositionBC": "KIT_pcr_B2", "control_type": "pcr"}
 
 
 def test_samples_text_bad_line_raises():
@@ -86,8 +92,8 @@ def test_write_sample_xlsx_roundtrip(tmp_path):
     from openpyxl import load_workbook
 
     dest = tmp_path / "plate.xlsx"
-    pr.write_sample_xlsx([{"TPositionId": "A1", "SPositionBC": "S1"}], str(dest))
+    pr.write_sample_xlsx([{"TPositionId": "A1", "SPositionBC": "S1", "control_type": "pcr"}], str(dest))
     wb = load_workbook(dest)
     ws = wb.active
-    assert [c.value for c in ws[1]] == ["TPositionId", "SPositionBC"]
-    assert [c.value for c in ws[2]] == ["A1", "S1"]
+    assert [c.value for c in ws[1]] == ["TPositionId", "SPositionBC", "control_type"]
+    assert [c.value for c in ws[2]] == ["A1", "S1", "pcr"]

@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,30 @@ router = APIRouter(prefix="/kits", tags=["kits"])
 def _pp_ordinal(name: str) -> int:
     m = re.findall(r"\d+", name)
     return int(m[0]) if m else 0
+
+
+_WELL_RE = re.compile(r"^[A-H](1[0-2]|[1-9])$")   # A1..H12
+
+
+def _build_controls(kit_code: str, controls_in) -> list[Control]:
+    """Validate wells (unique standard A1..H12) and resolve auto-names for position controls."""
+    rows: list[Control] = []
+    seen: set[str] = set()
+    for c in controls_in:
+        pos = (c.position or "").strip().upper() or None
+        if pos is not None:
+            if not _WELL_RE.match(pos):
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY, f"invalid control well: {c.position!r}"
+                )
+            if pos in seen:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY, f"duplicate control well: {pos}"
+                )
+            seen.add(pos)
+        name = (c.name or "").strip() or (f"{kit_code}_{c.kind.name_token}_{pos}" if pos else None)
+        rows.append(Control(kind=c.kind, name_pattern=c.name_pattern, position=pos, name=name))
+    return rows
 
 
 def _global_tag_layout(db: Session) -> TagLayout:
@@ -70,6 +95,25 @@ def list_kits(db: Session = Depends(get_db), current: User = Depends(get_current
     return kits
 
 
+@router.get("/{kit_id}/control-template.xlsx")
+def download_control_template(
+    kit_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)
+):
+    """A plate .xlsx pre-filled with this kit's control names — ready for the upload path."""
+    from app.services.control_sheet import build_control_template_xlsx
+    kit = db.get(Kit, kit_id)
+    if kit is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kit not found")
+    if not _can_access(kit, current):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this kit")
+    data = build_control_template_xlsx(kit)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{kit.kit_code}_plate_template.xlsx"'},
+    )
+
+
 @router.get("/{kit_id}", response_model=KitOut)
 def get_kit(kit_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     kit = db.get(Kit, kit_id)
@@ -113,7 +157,7 @@ def create_kit(payload: KitCreate, db: Session = Depends(get_db), admin: User = 
         tag_columns=[
             TagColumn(name=t, ordinal=_pp_ordinal(t)) for t in payload.selected_tags
         ],
-        controls=[Control(**c.model_dump()) for c in payload.controls],
+        controls=_build_controls(payload.kit_code, payload.controls),
         users=list(assigned),
     )
     db.add(kit)

@@ -48,12 +48,30 @@ def _as_bool(value):
     return str(value).strip().lower() in ("1", "true", "yes", "y", "t")
 
 
+# Non-positive controls (all of these feed the progressive noise threshold).
+NEGATIVE_CONTROL_TYPES = {"sequencing", "pcr", "extraction", "negative"}
+
+
+def parse_control_type(value):
+    """Extract the control_type token from the ngsfilter 6th column.
+
+    Values look like 'type=control;control_type=pcr;' | 'type=sample;' | 'type=NA'.
+    Returns the lowercase control type ('pcr', 'sequencing', ...) or '' for samples/NA.
+    """
+    s = str(value or "")
+    if "type=control" not in s:
+        return ""
+    m = re.search(r"control_type=([^;]+)", s)
+    return m.group(1).strip().lower() if m else ""
+
+
 # Output column layouts (kept in one place so an empty-locus file matches a populated one).
 GENOTYPE_COLUMNS = ["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name",
-                    "length", "Position", "called", "flag", "stutter", "Sequence", "TagCombo"]
+                    "length", "Position", "called", "flag", "stutter", "Sequence", "TagCombo",
+                    "control_type"]
 FREQUENCY_COLUMNS = ["Marker", "N", "Sequence"]
 POSITION_COLUMNS = ["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name",
-                    "length", "Position", "TagCombo"]
+                    "length", "Position", "TagCombo", "control_type"]
 
 
 def read_csv_or_empty(path):
@@ -66,14 +84,16 @@ def read_csv_or_empty(path):
 
 def positions_from_ngsfilter(ngsfilter_path, locus_name, kit_id):
     """Build the positions table from the ngsfilter alone (independent of read counts)."""
-    ngsfilter = pd.read_csv(ngsfilter_path)[["sample", "sample_tag"]]
-    ngsfilter = ngsfilter.rename(columns={"sample_tag": "TagCombo"}).drop_duplicates(subset="sample")
+    raw = pd.read_csv(ngsfilter_path)
+    cols = ["sample", "sample_tag"] + (["control"] if "control" in raw.columns else [])
+    ngsfilter = raw[cols].rename(columns={"sample_tag": "TagCombo"}).drop_duplicates(subset="sample")
     pos = ngsfilter.copy()
     pos["Plate"] = pos["sample"].apply(lambda r: r.split("__")[-1]).str.replace("PP", "")
     pos["Position"] = pos["sample"].apply(lambda r: r.split("__")[-2]).astype(int)
     pos["Sample_Name"] = pos["sample"].apply(lambda r: r.split("__")[0])
     pos["Read_Count"], pos["length"] = "", ""
     pos["Marker"], pos["Run_Name"] = locus_name, kit_id
+    pos["control_type"] = pos["control"].apply(parse_control_type) if "control" in pos.columns else ""
     return pos[POSITION_COLUMNS]
 
 
@@ -311,15 +331,30 @@ def main():
     reads = reads.merge(sequences, left_on="Sequence_id", right_on="id").drop(columns=["id_y", "Sequence_id" ])
     reads.rename(columns={"id_x": "Sample_Name"}, inplace=True)
     reads["length"] = reads["sequence"].apply(len)
+    # control_type per composite sample name (from the ngsfilter 6th column) — drives the threshold
+    # and is carried onto the genotype/position outputs. Empty string for ordinary samples.
+    ctrl_ngs = pd.read_csv(args.ngsfilter_path)
+    if "control" in ctrl_ngs.columns:
+        ctrl_map = (ctrl_ngs[["sample", "control"]].drop_duplicates(subset="sample")
+                    .assign(control_type=lambda d: d["control"].apply(parse_control_type))
+                    .set_index("sample")["control_type"].to_dict())
+    else:
+        ctrl_map = {}
+    reads["control_type"] = reads["Sample_Name"].map(ctrl_map).fillna("")
     #filter reads and set up thresholds
     reads = reads[reads["Read_Count"] > parameters["discard_threshold"]]
     if progressive_threshold:
-        if len(reads[reads["Sample_Name"].str.contains(parameters["negative_name"])]["Read_Count"]) != 0:
-            # L = 1.5 * int(max(gen[gen["Sample_Name"].str.contains("^B[0-9]{2}")]["Read_Count"])) #maximum number of reads in one allele in Blanks named B01, B02 etc
-            parameters["discard_threshold"] = 1.5 * int(max(reads[reads["Sample_Name"].str.contains(parameters["negative_name"])]["Read_Count"]))    # Mark as Low count alleles, that have 1.5 * number of reads in max Blank
-            reads = reads[reads["Read_Count"] > parameters["discard_threshold"]]  # Filter out samples with number of reads < or equal to progressive threshold
-            parameters["str_low_allele_flag_threshold"] = reads["Read_Count"].quantile(0.05)  # allele marked as low if it is the bottom 5% of distribution
-            parameters["snp_low_allele_flag_threshold"] = reads["Read_Count"].quantile(0.05)  # allele marked as low if it is the bottom 5% of distribution
+        # Negatives = all non-positive controls (sequencing/blank + pcr + extraction). Fall back to
+        # the legacy negative_name substring when the ngsfilter has no control column.
+        neg_mask = reads["control_type"].isin(NEGATIVE_CONTROL_TYPES)
+        if not neg_mask.any():
+            neg_mask = reads["Sample_Name"].str.contains(parameters["negative_name"])
+        neg_reads = reads[neg_mask]["Read_Count"]
+        if len(neg_reads) != 0:
+            parameters["discard_threshold"] = 1.5 * int(max(neg_reads))    # 1.5 × max control reads
+            reads = reads[reads["Read_Count"] > parameters["discard_threshold"]]  # drop noise floor
+            parameters["str_low_allele_flag_threshold"] = reads["Read_Count"].quantile(0.05)  # bottom 5%
+            parameters["snp_low_allele_flag_threshold"] = reads["Read_Count"].quantile(0.05)  # bottom 5%
     genotypes = []
     for sample_name, data in reads.groupby(["Sample_Name"]):
         data = data.reset_index(drop=True)
@@ -369,9 +404,11 @@ def main():
         all_geno = all_geno[all_geno["stutter"] | all_geno["called"]]
     # format for the database (ngsfilter columns were validated up front)
     ngsfilter = pd.read_csv(args.ngsfilter_path)
-    ngsfilter = ngsfilter[["sample","sample_tag"]]
+    keep = ["sample", "sample_tag"] + (["control"] if "control" in ngsfilter.columns else [])
+    ngsfilter = ngsfilter[keep]
     ngsfilter = ngsfilter.rename(columns={"sample_tag":"TagCombo"})
     ngsfilter = ngsfilter.drop_duplicates(subset="sample")
+    all_geno = all_geno.drop(columns=["control_type"], errors="ignore")  # recompute from ngsfilter below
     all_geno = pd.merge(all_geno, ngsfilter,left_on="Sample_Name", right_on="sample", how='left')
 
 
@@ -381,9 +418,10 @@ def main():
     all_geno["Marker"],all_geno["Run_Name"] = args.locus_name, args.kit_id
     all_geno["called"] = all_geno["called"].astype(str).str.upper()
     all_geno["stutter"] = all_geno["stutter"].astype(str).str.upper()
+    all_geno["control_type"] = all_geno["control"].apply(parse_control_type) if "control" in all_geno.columns else ""
     all_geno.rename(columns={"sequence": "Sequence"}, inplace=True)
 
-    all_geno = all_geno[["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position", "called", "flag", "stutter", "Sequence", "TagCombo"]]
+    all_geno = all_geno[GENOTYPE_COLUMNS]
     all_geno.to_csv(f"{args.kit_id}_{args.locus_name}_genotypes.txt", sep="\t", index=False)
 
 
@@ -398,7 +436,8 @@ def main():
     positions["Sample_Name"] = positions["sample"].apply(lambda row: row.split("__")[0])
     positions["Read_Count"], positions["length"] = "", ""
     positions["Marker"],positions["Run_Name"] = args.locus_name, args.kit_id
-    positions = positions[["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position", "TagCombo"]]
+    positions["control_type"] = positions["control"].apply(parse_control_type) if "control" in positions.columns else ""
+    positions = positions[POSITION_COLUMNS]
     positions.to_csv(f"{args.kit_id}_{args.locus_name}_positions.txt", sep="\t", index=False)
     log.info("Done: wrote genotypes/frequency/positions for locus %s (%d called rows)", locus, len(all_geno))
 

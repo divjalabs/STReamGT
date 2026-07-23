@@ -223,6 +223,11 @@ export default function SamplePage() {
       </div>
 
       <div className="info-bar">
+        {sample.is_control && (
+          <span className="stat-badge control" title="This well is a control (excluded from matching)">
+            ⬤ Control{sample.control_type ? ` · ${sample.control_type}` : ""}
+          </span>
+        )}
         <button className={`stat-badge ${sample.genotype_ok ? "good" : "bad"}`}
                 onClick={() => patch({ genotype_ok: !sample.genotype_ok })} title="Click to toggle">
           {sample.genotype_ok ? "✓ Genotyped" : "✕ Not genotyped"}

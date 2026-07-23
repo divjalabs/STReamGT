@@ -30,6 +30,87 @@ def test_admin_registers_kit_from_panel(client, catalog, admin_token):
     assert kit["panel"]["code"] == "UA_primers"
 
 
+def test_position_controls_autoname_and_validate(client, catalog, admin_token):
+    r = client.post(
+        "/api/kits",
+        json={
+            "kit_code": "DIVJA300",
+            "panel_id": panel_id("UA_primers"),
+            "selected_tags": ["PP1", "PP2"],
+            "controls": [
+                {"kind": "sequencing", "name_pattern": "blank"},   # legacy pattern row
+                {"kind": "pcr", "position": "a1"},                 # auto-named, lowercased well
+                {"kind": "sequencing", "position": "b1"},          # token 'blank', not 'sequencing'
+                {"kind": "extraction", "position": "c1"},          # token 'ext'
+                {"kind": "positive", "position": "H12", "name": "myPos"},
+            ],
+        },
+        headers=bearer(admin_token),
+    )
+    assert r.status_code == 201, r.text
+    controls = r.json()["controls"]
+    by_pos = {c["position"]: c for c in controls if c["position"]}
+    assert by_pos["A1"]["name"] == "DIVJA300_pcr_A1"       # auto-generated
+    assert by_pos["B1"]["name"] == "DIVJA300_blank_B1"     # sequencing -> 'blank' token
+    assert by_pos["C1"]["name"] == "DIVJA300_ext_C1"       # extraction -> 'ext' token
+    assert by_pos["H12"]["name"] == "myPos"                # explicit kept
+    # KitSummary (list) also carries controls
+    summary = [k for k in client.get("/api/kits", headers=bearer(admin_token)).json()
+               if k["kit_code"] == "DIVJA300"][0]
+    assert {c["kind"] for c in summary["controls"] if c["position"]} == \
+        {"pcr", "sequencing", "extraction", "positive"}
+
+
+def test_download_control_template(client, catalog, admin_token):
+    import io
+    from openpyxl import load_workbook
+    r = client.post(
+        "/api/kits",
+        json={"kit_code": "DIVJA310", "panel_id": panel_id("UA_primers"), "selected_tags": ["PP1"],
+              "controls": [{"kind": "pcr", "position": "B1"}]},
+        headers=bearer(admin_token),
+    )
+    kit_id = r.json()["id"]
+    resp = client.get(f"/api/kits/{kit_id}/control-template.xlsx", headers=bearer(admin_token))
+    assert resp.status_code == 200
+    assert "spreadsheet" in resp.headers["content-type"]
+    wb = load_workbook(io.BytesIO(resp.content))
+    ws = wb.active
+    assert [ws.cell(1, c).value for c in (1, 2, 3)] == ["Position", "Sample Name", "Control type"]
+    # the pcr control at B1 is pre-filled with its name + type
+    filled = {ws.cell(row, 1).value: (ws.cell(row, 2).value, ws.cell(row, 3).value)
+              for row in range(2, 98) if ws.cell(row, 2).value}
+    assert filled["B1"] == ("DIVJA310_pcr_B1", "pcr")
+
+
+def test_duplicate_control_well_rejected(client, catalog, admin_token):
+    r = client.post(
+        "/api/kits",
+        json={
+            "kit_code": "DIVJA301", "panel_id": panel_id("UA_primers"),
+            "selected_tags": ["PP1"],
+            "controls": [{"kind": "pcr", "position": "A1"}, {"kind": "positive", "position": "A1"}],
+        },
+        headers=bearer(admin_token),
+    )
+    assert r.status_code == 422 and "A1" in r.text
+
+
+def test_control_templates_crud(client, catalog, admin_token, user_token):
+    body = {"name": "std-layout", "positions": [
+        {"kind": "pcr", "position": "A1"}, {"kind": "sequencing", "position": "B1"}]}
+    r = client.post("/api/control-templates", json=body, headers=bearer(admin_token))
+    assert r.status_code == 201, r.text
+    tid = r.json()["id"]
+    assert len(r.json()["positions"]) == 2
+    # non-admin forbidden
+    assert client.post("/api/control-templates", json=body, headers=bearer(user_token)).status_code == 403
+    # duplicate name rejected
+    assert client.post("/api/control-templates", json=body, headers=bearer(admin_token)).status_code == 409
+    assert any(t["id"] == tid for t in client.get("/api/control-templates", headers=bearer(admin_token)).json())
+    assert client.delete(f"/api/control-templates/{tid}", headers=bearer(admin_token)).status_code == 204
+
+
 def test_unknown_tag_columns_rejected(client, catalog, admin_token):
     r = client.post(
         "/api/kits",

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { KIND_META } from "./ControlPlate.jsx";
 
 // 96-well plate shown transposed: 12 rows (numbers) down, 8 columns (A..H) across.
 const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"]; // columns
@@ -12,12 +13,33 @@ export const TOTAL_WELLS = WELLS.length; // 96
 let seq = 1;
 const mkRow = (pos = "", name = "") => ({ uid: seq++, pos, name });
 
-/** Serialize table rows to the `position,name` text the backend already parses. */
-export function rowsToSampleText(rows) {
+/** Serialize rows to `position,name,control_type` text the backend parses.
+ * control_type is looked up from `controlsByPos` (POS -> {kind,name}); empty for samples. */
+export function rowsToSampleText(rows, controlsByPos = {}) {
   return (rows || [])
     .filter((r) => r.pos.trim() && r.name.trim())
-    .map((r) => `${r.pos.trim()},${r.name.trim()}`)
+    .map((r) => {
+      const ct = controlsByPos[r.pos.trim().toUpperCase()]?.kind || "";
+      return `${r.pos.trim()},${r.name.trim()},${ct}`;
+    })
     .join("\n");
+}
+
+/** Warnings for the submit plate: duplicate names + defined control wells that were changed/cleared. */
+export function controlPlateWarnings(rows, controlsByPos = {}) {
+  const warns = [];
+  const filled = (rows || []).filter((r) => r.pos.trim() && r.name.trim());
+  const counts = {};
+  filled.forEach((r) => { const n = r.name.trim(); counts[n] = (counts[n] || 0) + 1; });
+  Object.entries(counts).filter(([, c]) => c > 1).forEach(([n]) =>
+    warns.push(`Name "${n}" is used in more than one well.`));
+  Object.entries(controlsByPos).forEach(([pos, c]) => {
+    const row = (rows || []).find((r) => r.pos.trim().toUpperCase() === pos);
+    if (!row || !row.name.trim()) warns.push(`Control well ${pos} (${c.kind}) is empty — expected "${c.name}".`);
+    else if (row.name.trim() !== c.name)
+      warns.push(`Well ${pos} is "${row.name.trim()}" but is a defined ${c.kind} control ("${c.name}").`);
+  });
+  return warns;
 }
 
 // Rank a position by plate order (A1,B1,..,H1,A2,..); unknown/non-standard positions sort last.
@@ -58,7 +80,7 @@ function autoFillPositions(rows) {
 }
 
 /** Editable sample table with two interchangeable views: plate grid (12×8) or a list. */
-export default function SampleTable({ value, onChange }) {
+export default function SampleTable({ value, onChange, controls = {} }) {
   const [view, setView] = useState("plate");
   const rows = value || [];
   const commitList = (next) => onChange(autoFillPositions(next));
@@ -160,13 +182,17 @@ export default function SampleTable({ value, onChange }) {
                     <th>{num}</th>
                     {LETTERS.map((letter, cIdx) => {
                       const pos = `${letter}${num}`;
+                      const ctrl = controls[pos];
+                      const meta = ctrl ? KIND_META[ctrl.kind] : null;
                       return (
                         <td key={pos}>
                           <input
+                            className={ctrl ? "control-well" : undefined}
+                            style={meta ? { borderColor: meta.color, boxShadow: `inset 0 -3px 0 ${meta.color}` } : undefined}
                             value={byPos[pos]?.name || ""}
                             onChange={(e) => setWell(pos, e.target.value)}
                             onPaste={(e) => pastePlate(e, rIdx, cIdx)}
-                            title={pos}
+                            title={ctrl ? `${pos} — ${ctrl.kind} control (${ctrl.name})` : pos}
                           />
                         </td>
                       );

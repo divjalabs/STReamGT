@@ -85,6 +85,12 @@ export default function Kits() {
                     )}
                   </div>
                   <div className="kit-actions">
+                    {(k.controls || []).some((c) => c.position) && (
+                      <button className="secondary" onClick={() =>
+                        api.downloadKitTemplate(k.id, `${k.kit_code}_plate_template.xlsx`).catch((e) => setErr(e.message))}>
+                        ⭳ Plate template
+                      </button>
+                    )}
                     {canRun && <Link to={`/submit?kit=${k.id}`}><button>▶ Run analysis</button></Link>}
                     {k.status === "sent" && (
                       <button className="secondary" onClick={() => markReceived(k.id)}>Mark received</button>

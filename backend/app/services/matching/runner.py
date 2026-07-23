@@ -48,6 +48,8 @@ def _eligible(db: Session, population: Population) -> list[Sample]:
         (SampleType.project_id == project_id) | (SampleType.project_id.is_(None))))}
     out = []
     for s in samples:
+        if s.is_control:            # controls never participate in matching / allele frequencies
+            continue
         if s.discard_sample or s.animal_matchlock:
             continue
         st = studies.get(s.study_id)

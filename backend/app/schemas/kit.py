@@ -14,8 +14,10 @@ class TagColumnIn(BaseModel):
 
 
 class ControlIn(BaseModel):
-    name_pattern: str = Field(examples=["blank"])
-    kind: ControlKind = ControlKind.negative
+    kind: ControlKind = ControlKind.sequencing
+    name_pattern: str | None = None          # legacy substring; set for pattern-based controls
+    position: str | None = Field(default=None, examples=["A1"])  # plate well for position controls
+    name: str | None = None                  # explicit name; auto-generated if blank
 
 
 class TagColumnOut(TagColumnIn):
@@ -29,7 +31,20 @@ class ControlOut(ControlIn):
 
 
 def _default_controls() -> list[ControlIn]:
-    return [ControlIn(name_pattern="blank", kind=ControlKind.negative)]
+    return [ControlIn(name_pattern="blank", kind=ControlKind.sequencing)]
+
+
+class ControlTemplateIn(BaseModel):
+    """A reusable plate control layout — kind + well (+ optional name) per control."""
+    name: str = Field(min_length=1, max_length=128)
+    positions: list[ControlIn] = Field(default_factory=list)
+
+
+class ControlTemplateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    positions: list[dict] = []
 
 
 class KitCreate(BaseModel):
@@ -71,6 +86,7 @@ class KitSummary(BaseModel):
     status: KitStatus
     updated_at: datetime | None = None   # last status change; None on older rows pre-migration
     tag_columns: list[TagColumnOut]
+    controls: list[ControlOut] = []      # control layout (positions/types) for the submit plate
     assigned_user_ids: list[int]
     studies: list[KitStudyRef] = []      # studies this kit is attached to (transient; see api/kits)
 

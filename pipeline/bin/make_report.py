@@ -65,6 +65,28 @@ def _well_row_col(position):
     return ROWS[(p // 12) % 8], (p % 12) + 1
 
 
+# Control types + a colour per type for the plate marks / controls section.
+CONTROL_TYPES = {"positive", "sequencing", "pcr", "extraction", "negative"}
+CONTROL_TYPE_COLORS = {
+    "positive": "#16a34a",     # green
+    "sequencing": "#dc2626",   # red (blank / sequencing negative)
+    "pcr": "#f59e0b",          # amber
+    "extraction": "#7c3aed",   # violet
+    "negative": "#dc2626",     # legacy
+}
+
+
+def _control_type_of(df):
+    """Lowercased control_type Series ('' for samples), robust to a missing column."""
+    if "control_type" in df.columns:
+        return df["control_type"].fillna("").astype(str).str.strip().str.lower()
+    return pd.Series([""] * len(df), index=df.index)
+
+
+def _is_control_series(df):
+    return _control_type_of(df).isin(CONTROL_TYPES)
+
+
 # ---------------- Section 1: read-attrition funnel ----------------
 
 def funnel_section(reads_summary, expected):
@@ -100,12 +122,47 @@ def funnel_section(reads_summary, expected):
     return html
 
 
+# ---------------- Section: controls ----------------
+
+def controls_section(genotypes):
+    """Summarise control wells: total reads per control type + a per-control table."""
+    if genotypes.empty:
+        return "<p class='muted'>No controls in this run.</p>"
+    ct = _control_type_of(genotypes)
+    ctrls = genotypes[ct.isin(CONTROL_TYPES)].copy()
+    if ctrls.empty:
+        return "<p class='muted'>No controls in this run.</p>"
+    ctrls["control_type"] = ct[ct.isin(CONTROL_TYPES)]
+
+    per_type = (ctrls.groupby("control_type")["Read_Count"].sum()
+                .reset_index().sort_values("control_type"))
+    fig = go.Figure(go.Bar(
+        x=per_type["control_type"], y=per_type["Read_Count"],
+        marker_color=[CONTROL_TYPE_COLORS.get(t, "#64748b") for t in per_type["control_type"]]))
+    fig.update_layout(title="Total reads per control type", yaxis_title="reads",
+                      xaxis_title="control type", margin=dict(t=50))
+
+    by_ctrl = (ctrls.groupby(["Sample_Name", "control_type"])["Read_Count"].sum()
+               .reset_index().sort_values(["control_type", "Sample_Name"]))
+    rows = "".join(
+        f"<tr><td>{r.Sample_Name}</td><td>{r.control_type}</td>"
+        f"<td style='text-align:right'>{int(r.Read_Count):,}</td></tr>"
+        for r in by_ctrl.itertuples())
+    table = ("<table style='border-collapse:collapse;margin-top:.5rem' border='1' cellpadding='4'>"
+             "<thead><tr><th>Control</th><th>Type</th><th>Reads</th></tr></thead>"
+             f"<tbody>{rows}</tbody></table>")
+    return _frag(fig) + table
+
+
 # ---------------- Section 2: reads and alleles per locus / replicate ----------------
 
 def per_locus_section(genotypes):
     if genotypes.empty:
         return "<p class='muted'>No genotypes available.</p>"
     g = genotypes.copy()
+    g = g[~_is_control_series(g)]           # controls are excluded from locus/replicate counts
+    if g.empty:
+        return "<p class='muted'>No non-control genotypes available.</p>"
     g["called_b"] = _is_true(g["called"])
 
     per_marker = g.groupby("Marker").agg(
@@ -131,9 +188,11 @@ def per_locus_section(genotypes):
     fig3.add_bar(name="called alleles", x=per_plate["Plate"], y=per_plate["called_alleles"],
                  marker_color="#059669", visible=False)
     fig3.update_layout(
-        title="Per replicate (plate)", xaxis_title="plate (PP)", yaxis_title="reads", showlegend=False,
-        margin=dict(t=70),
-        updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.16, yanchor="top",
+        title=dict(text="Per replicate (plate)", x=0, xanchor="left", y=0.97, yanchor="top"),
+        xaxis_title="plate (PP)", yaxis_title="reads", showlegend=False,
+        margin=dict(t=110),
+        updatemenus=[dict(type="buttons", direction="right", showactive=True,
+            x=1, xanchor="right", y=1.22, yanchor="top", pad=dict(t=2, b=2),
             buttons=[
                 dict(label="Reads", method="update",
                      args=[{"visible": [True, False]}, {"yaxis": {"title": "reads"}}]),
@@ -146,10 +205,11 @@ def per_locus_section(genotypes):
 
 # ---------------- Section 3: plate read-count heatmaps with controls ----------------
 
-def _plate_figure(plates, layout_by, reads_by, is_control):
+def _plate_figure(plates, layout_by, reads_by, ctrl_by):
     """Interactive Plotly figure for one locus: every primer plate as an 8x12 heatmap of
-    read counts, with sample name + count printed in each cell and controls outlined in red.
-    Returns a plotly Figure (rendered lazily on the client so many loci stay fast)."""
+    read counts, with sample name + count printed in each cell and controls outlined by type
+    (colour = control type). Returns a plotly Figure (rendered lazily on the client)."""
+    from collections import defaultdict
     ncol = 2 if len(plates) > 1 else 1
     nrow = (len(plates) + ncol - 1) // ncol
     fig = make_subplots(rows=nrow, cols=ncol, subplot_titles=[f"PP{p}" for p in plates],
@@ -158,7 +218,7 @@ def _plate_figure(plates, layout_by, reads_by, is_control):
         r, c = idx // ncol + 1, idx % ncol + 1
         z = [[None] * 12 for _ in range(8)]
         text = [[""] * 12 for _ in range(8)]
-        cx, cy = [], []
+        by_type = defaultdict(lambda: ([], []))   # control_type -> (xs, ys)
         for pos in range(1, 97):
             name = layout_by.get((plate, pos))
             if name is None:
@@ -167,16 +227,19 @@ def _plate_figure(plates, layout_by, reads_by, is_control):
             reads = reads_by.get((plate, pos), 0)
             z[ROWS.index(rr)][cc - 1] = reads
             text[ROWS.index(rr)][cc - 1] = f"{name}<br>{reads:,}"
-            if is_control(name):
-                cx.append(cc); cy.append(rr)
+            ctype = ctrl_by.get((plate, pos), "")
+            if ctype in CONTROL_TYPES:
+                by_type[ctype][0].append(cc); by_type[ctype][1].append(rr)
         fig.add_trace(go.Heatmap(
             z=z, x=list(range(1, 13)), y=ROWS, text=text, texttemplate="%{text}",
             textfont=dict(size=9), colorscale="Blues", showscale=False, xgap=1, ygap=1,
             hovertemplate="%{text}<extra></extra>"), row=r, col=c)
-        if cx:
-            fig.add_trace(go.Scatter(x=cx, y=cy, mode="markers", showlegend=False, hoverinfo="skip",
-                                     marker=dict(symbol="square-open", size=34, color="#dc2626",
-                                                 line=dict(width=3))), row=r, col=c)
+        for ctype, (cx, cy) in by_type.items():
+            fig.add_trace(go.Scatter(
+                x=cx, y=cy, mode="markers", showlegend=False, hoverinfo="skip",
+                marker=dict(symbol="square-open", size=34,
+                            color=CONTROL_TYPE_COLORS.get(ctype, "#dc2626"),
+                            line=dict(width=3))), row=r, col=c)
     fig.update_xaxes(side="top", dtick=1, tickfont=dict(size=10), constrain="domain")
     fig.update_yaxes(autorange="reversed", tickfont=dict(size=10))
     fig.update_layout(height=300 * nrow + 40, margin=dict(t=40, l=20, r=10, b=10),
@@ -199,15 +262,25 @@ def plate_heatmap_section(genotypes, positions, negative_name):
     for _, r in layout.iterrows():
         layout_by[(str(r["Marker"]), str(r["Plate"]), int(r["Position"]))] = str(r["Sample_Name"])
 
-    neg = (negative_name or "").lower()
-    is_control = (lambda name: neg in name.lower()) if neg else (lambda name: False)
+    # control type per well (plate, position) — a well's type is the same across loci.
+    ctrl_by = {}
+    lct = _control_type_of(layout)
+    for (_, r), ctype in zip(layout.iterrows(), lct):
+        if ctype in CONTROL_TYPES:
+            ctrl_by[(str(r["Plate"]), int(r["Position"]))] = ctype
+    if not ctrl_by:   # back-compat: no control column → fall back to the negative_name substring
+        neg = (negative_name or "").lower()
+        if neg:
+            for (m, pl, pos), name in layout_by.items():
+                if neg in name.lower():
+                    ctrl_by[(pl, pos)] = "sequencing"
 
     markers = sorted({k[0] for k in layout_by} | {k[0] for k in reads_by})
     options, figs_json = [], []
 
     def add(label, plates, lb, rb):
         options.append(f"<option value='{len(options)}'>{label}</option>")
-        figs_json.append(_plate_figure(plates, lb, rb, is_control).to_json())
+        figs_json.append(_plate_figure(plates, lb, rb, ctrl_by).to_json())
 
     # "All loci" first: reads summed across every locus per well (well layout is shared across loci).
     all_layout = {(pl, pos): layout_by[(m, pl, pos)] for (m, pl, pos) in layout_by}
@@ -230,9 +303,12 @@ def plate_heatmap_section(genotypes, positions, negative_name):
         return "<p class='muted'>No plate/marker data.</p>"
     log.info("plate heatmaps: %d loci", len(options))
 
+    legend = " ".join(
+        f"<span style='color:{c}'>■</span> {t}" for t, c in CONTROL_TYPE_COLORS.items()
+        if t != "negative")
     intro = ("<p class='muted'>Each primer plate (PP) as an 8×12 grid — cell = sample name and read "
-             "count, coloured by count. Red square = negative control. Pick a locus; zoom/pan to read; "
-             "hover for exact values.</p>")
+             "count, coloured by count. Control wells are outlined by type: " + legend +
+             ". Pick a locus; zoom/pan to read; hover for exact values.</p>")
     select = ("<label>Locus: <select onchange='showPlate(this.value)' style='font-size:1rem;padding:.3rem'>"
               + "".join(options) + "</select></label>")
     script = ("<script>var PLATE_FIGS=[" + ",".join(figs_json) + "];"
@@ -367,7 +443,8 @@ def main():
     body = (
         f"<h1>{args.kit_id} — run report</h1>"
         f"<h2>Read attrition</h2>{funnel_section(reads_summary, args.expected_reads)}"
-        f"<h2>Reads and alleles per locus / replicate</h2>{per_locus_section(genotypes)}"
+        f"<h2>Reads and alleles per locus / replicate assigned to alleles</h2>{per_locus_section(genotypes)}"
+        f"<h2>Controls</h2>{controls_section(genotypes)}"
         f"<h2>Plate read counts (□ = control)</h2>{plate_heatmap_section(genotypes, positions, negative_name)}"
     )
     out_main = f"{args.kit_id}_report.html"

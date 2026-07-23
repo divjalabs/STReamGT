@@ -16,7 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
-from app.models.enums import Sex
+from app.models.enums import Sex, ControlKind
 
 
 class Sample(Base):
@@ -38,6 +38,11 @@ class Sample(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)  # user-entered; NOT unique
     sex: Mapped[Sex] = mapped_column(SAEnum(Sex, name="sex"), default=Sex.unknown, nullable=False)
     sex_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Control wells (from the kit's plate layout) flow through the run as samples but are flagged
+    # so they're excluded from matching + per-locus/replicate QC and badged in the UI.
+    is_control: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    control_type: Mapped[ControlKind | None] = mapped_column(SAEnum(ControlKind, name="control_kind"))
 
     # Matching / QC flags (mirror tblSamples).
     discard_sample: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

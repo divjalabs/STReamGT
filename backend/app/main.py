@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api import (
     auth, kits, jobs, panels, users, projects, samples, consensus, matching, porting,
+    control_templates,
 )
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
@@ -28,6 +29,7 @@ def health() -> dict:
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(panels.router, prefix=settings.api_prefix)
 app.include_router(kits.router, prefix=settings.api_prefix)
+app.include_router(control_templates.router, prefix=settings.api_prefix)
 app.include_router(jobs.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
 app.include_router(projects.router, prefix=settings.api_prefix)

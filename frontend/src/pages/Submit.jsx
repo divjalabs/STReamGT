@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, uploadFile } from "../api/client.js";
-import SampleTable, { rowsToSampleText, filledWellCount, TOTAL_WELLS } from "../components/SampleTable.jsx";
+import SampleTable, { rowsToSampleText, filledWellCount, TOTAL_WELLS, controlPlateWarnings } from "../components/SampleTable.jsx";
 import TargetPicker from "../components/TargetPicker.jsx";
 
 const EMPTY_TARGET = { project_id: null, default_population_id: null, default_study_id: null };
@@ -41,12 +41,36 @@ export default function Submit() {
   const TERMINAL = ["succeeded", "failed"];
   const kitBusy = !!kit && jobs.some((j) => j.kit_id === kit.id && !TERMINAL.includes(j.status));
 
+  // Position controls defined on the kit, keyed by well (drives pre-fill, colouring, warnings).
+  const controlsByPos = {};
+  for (const c of (kit?.controls || [])) {
+    if (c.position) {
+      const pos = c.position.toUpperCase();
+      controlsByPos[pos] = { kind: c.kind, name: c.name || `${kit.kit_code}_${c.kind}_${c.position}` };
+    }
+  }
+  const warnings = kit
+    ? batches.flatMap((b, i) =>
+        (b.sampleMode === "table" ? controlPlateWarnings(b.sampleRows, controlsByPos) : [])
+          .map((w) => (batches.length > 1 ? `Batch ${i + 1}: ${w}` : w)))
+    : [];
+
   // When a kit is picked, tick all of its tag columns in the FIRST batch only; later
   // batches start empty (each PP column can belong to just one batch — see cross-check below).
   useEffect(() => {
     if (!kit) return;
     const all = kit.tag_columns.map((t) => t.name);
-    setBatches((bs) => bs.map((b, i) => ({ ...b, selectedTags: i === 0 ? all : [] })));
+    // seed each batch's plate with the kit's control wells (pre-filled names, editable)
+    const seed = (rows) => {
+      const out = rows ? [...rows] : [];
+      for (const [pos, c] of Object.entries(controlsByPos)) {
+        const existing = out.find((r) => r.pos.trim().toUpperCase() === pos);
+        if (existing) { if (!existing.name.trim()) existing.name = c.name; }
+        else out.push({ uid: `ctrl-${pos}`, pos, name: c.name });
+      }
+      return out;
+    };
+    setBatches((bs) => bs.map((b, i) => ({ ...b, selectedTags: i === 0 ? all : [], sampleRows: seed(b.sampleRows) })));
     // Pre-fill the ingestion target from the kit's linked study (if exactly one).
     if (kit.studies && kit.studies.length === 1) {
       const s = kit.studies[0];
@@ -111,7 +135,7 @@ export default function Submit() {
         } else {
           const n = filledWellCount(b.sampleRows);
           if (n < TOTAL_WELLS) throw new Error(`Batch ${b.name}: all ${TOTAL_WELLS} wells must be filled (currently ${n}).`);
-          out.sample_names_text = rowsToSampleText(b.sampleRows);
+          out.sample_names_text = rowsToSampleText(b.sampleRows, controlsByPos);
         }
         outBatches.push(out);
       }
@@ -143,6 +167,16 @@ export default function Submit() {
     <div className="container">
       <h1>Analyse the data</h1>
       {err && <p className="error">{err}</p>}
+      {warnings.length > 0 && (
+        <div className="card warn-card warn-sticky">
+          <b>⚠️ Check the plate before submitting</b>
+          <ul className="warn-list">
+            {warnings.slice(0, 8).map((w, i) => <li key={i}>{w}</li>)}
+            {warnings.length > 8 && <li>…and {warnings.length - 8} more.</li>}
+          </ul>
+          <p className="muted small">Warnings only — you can still submit.</p>
+        </div>
+      )}
       <form onSubmit={submit}>
         <section className="card">
           <label>
@@ -219,7 +253,7 @@ export default function Submit() {
               {b.sampleMode === "upload" ? (
                 <input type="file" accept=".xlsx" onChange={(e) => setBatch(b.uid, { sampleFile: e.target.files[0] })} />
               ) : (
-                <SampleTable value={b.sampleRows} onChange={(rows) => setBatch(b.uid, { sampleRows: rows })} />
+                <SampleTable value={b.sampleRows} onChange={(rows) => setBatch(b.uid, { sampleRows: rows })} controls={controlsByPos} />
               )}
             </fieldset>
 

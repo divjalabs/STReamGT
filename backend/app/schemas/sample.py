@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.enums import Sex, ConsensusSource
+from app.models.enums import Sex, ConsensusSource, ControlKind
 
 
 class SampleSummary(BaseModel):
@@ -17,6 +17,8 @@ class SampleSummary(BaseModel):
     kit_id: int | None
     sex: Sex
     sex_locked: bool
+    is_control: bool = False
+    control_type: ControlKind | None = None
     genotype_ok: bool
     discard_sample: bool
     quality_index: float | None

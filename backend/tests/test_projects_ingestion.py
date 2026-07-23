@@ -116,6 +116,34 @@ def test_ingestion_idempotent_and_lock(admin_token):
         assert cg.allele1 == "LOCKED"
 
 
+def test_ingestion_flags_controls_from_positions(admin_token):
+    # positions.txt carries a control_type column (from the pipeline's 6th ngsfilter column)
+    positions = _tsv(
+        ["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position",
+         "TagCombo", "control_type"],
+        [["S1", "PP1", "", "M1", "kit", "", 1, "PP1", ""],
+         ["KIT_pcr_B1", "PP1", "", "M1", "kit", "", 2, "PP1", "pcr"]],
+    )
+    genotypes = _tsv(
+        ["Sample_Name", "Plate", "Read_Count", "Marker", "Run_Name", "length", "Position",
+         "called", "flag", "stutter", "Sequence", "TagCombo", "control_type"],
+        [["S1", "PP1", 500, "M1", "kit", 12, 1, "TRUE", "", "FALSE", A, "PP1", ""],
+         ["KIT_pcr_B1", "PP1", 40, "M1", "kit", 12, 2, "TRUE", "", "FALSE", A, "PP1", "pcr"]],
+    )
+    with SessionLocal() as db:
+        _proj_id, _pop_id, job_id = _seed_project_and_job(db)
+        job = db.get(Job, job_id)
+        ingest_parsed(
+            db, job, consensus=[], ref_alleles=P.parse_reference_alleles(REFERENCE),
+            genotypes=P.parse_genotypes(genotypes), positions=P.parse_positions(positions),
+        )
+        db.commit()
+        s1 = db.scalar(select(Sample).where(Sample.job_id == job.id, Sample.name == "S1"))
+        ctrl = db.scalar(select(Sample).where(Sample.job_id == job.id, Sample.name == "KIT_pcr_B1"))
+        assert s1.is_control is False and s1.control_type is None
+        assert ctrl.is_control is True and ctrl.control_type.value == "pcr"
+
+
 def _hdr(tok):
     return {"Authorization": f"Bearer {tok}"}
 

@@ -89,6 +89,8 @@ def run_sample_qc(db: Session, sample_ids) -> int:
         sample = db.get(Sample, sid)
         if sample is None:
             continue
+        if sample.is_control:   # controls aren't scored (kept out of n_replicates/genotype_ok)
+            continue
         apply_qc(db, sample)
         determine_sex(db, sample)
         n += 1

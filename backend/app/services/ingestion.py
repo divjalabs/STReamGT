@@ -16,9 +16,27 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Job, Sample, ReplicateObservation, ReplicateAmplification, ConsensusGenotype,
-    ReferenceAllele, ConsensusSource,
+    ReferenceAllele, ConsensusSource, Kit, ControlKind,
 )
 from app.services import consensus_parsers as P
+
+
+def _control_kind_map(db: Session, job: Job, positions: list[P.PositionRow]) -> dict[str, ControlKind]:
+    """name -> ControlKind for control wells: pipeline `control_type` first, kit layout as fallback."""
+    out: dict[str, ControlKind] = {}
+    for p in positions:                       # primary: control_type carried through positions.txt
+        ct = (p.control_type or "").strip().lower()
+        if ct and ct != "sample" and ct != "na":
+            try:
+                out[p.sample_name] = ControlKind(ct)
+            except ValueError:
+                pass
+    if job.kit_id:                            # fallback: exact name match against the kit's controls
+        kit = db.get(Kit, job.kit_id)
+        for c in (kit.controls if kit else []):
+            if c.name and c.name not in out:
+                out[c.name] = c.kind
+    return out
 
 
 def _read(path: str | None) -> str:
@@ -91,10 +109,12 @@ def ingest_parsed(
     id_by_name = {(marker, r.allele_name): r.id for (marker, _seq), r in ref_row_by_seq.items()}
 
     # 2) Samples: find-or-create by (job_id, name). Collect the ids we touch this run.
+    control_kinds = _control_kind_map(db, job, positions)
     sample_ids: dict[str, int] = {}
     names = {r.sample_name for r in consensus} | {g.sample_name for g in genotypes} \
         | {p.sample_name for p in positions}
     for name in names:
+        ckind = control_kinds.get(name)
         sample = db.scalar(
             select(Sample).where(Sample.job_id == job.id, Sample.name == name)
         )
@@ -108,10 +128,15 @@ def ingest_parsed(
                 kit_id=job.kit_id,
                 job_id=job.id,
                 name=name,
+                is_control=ckind is not None,
+                control_type=ckind,
             )
             db.add(sample)
             db.flush()
             sample.system_code = f"S-{sample.id:06d}"
+        else:
+            sample.is_control = ckind is not None   # re-flag on re-ingest
+            sample.control_type = ckind
         sample_ids[name] = sample.id
     db.flush()
 
