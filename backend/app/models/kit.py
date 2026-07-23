@@ -131,6 +131,11 @@ class Kit(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    # Self-service claim: the kit ships a single-use code. Only its keyed HMAC is stored (the
+    # plaintext is shown once at creation); redeeming attaches the kit to the claimer.
+    claim_code_hmac: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    claimed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     panel: Mapped["PrimerPanel"] = relationship()
     tag_columns: Mapped[list["TagColumn"]] = relationship(

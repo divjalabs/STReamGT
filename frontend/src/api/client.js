@@ -55,8 +55,8 @@ async function downloadBlob(path, filename) {
 
 export const api = {
   // auth
-  register: (email, password, organisation) =>
-    request("/auth/register", { method: "POST", body: { email, password, organisation } }),
+  register: (email, password, organisation, claimCode) =>
+    request("/auth/register", { method: "POST", body: { email, password, organisation, claim_code: claimCode || null } }),
   login: async (email, password) => {
     const form = new URLSearchParams({ username: email, password });
     const res = await fetch("/api/auth/login", {
@@ -81,6 +81,9 @@ export const api = {
   deleteKit: (id) => request(`/kits/${id}`, { method: "DELETE" }),
   getTagLayout: () => request("/kits/tag-layout"),
   downloadKitTemplate: (id, filename) => downloadBlob(`/kits/${id}/control-template.xlsx`, filename),
+  claimKit: (code) => request("/kits/claim", { method: "POST", body: { code } }),
+  regenerateClaimCode: (id) => request(`/kits/${id}/claim-code`, { method: "POST" }),
+  revokeClaim: (id) => request(`/kits/${id}/claim`, { method: "DELETE" }),
   getKitReads: (id) => request(`/kits/${id}/reads`),
   setKitReads: (id, body) => request(`/kits/${id}/reads`, { method: "PUT", body }),
   deleteKitReads: (id) => request(`/kits/${id}/reads`, { method: "DELETE" }),

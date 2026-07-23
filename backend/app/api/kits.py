@@ -13,10 +13,13 @@ from app.models import (
     User, Kit, KitReads, TagColumn, Control, PrimerPanel, TagLayout, KitStatus, kit_access,
 )
 from app.auth.deps import get_current_user, require_admin
-from app.schemas.kit import KitCreate, KitUpdate, KitOut, KitSummary, KitReadsIn, KitReadsOut
+from app.schemas.kit import (
+    KitCreate, KitUpdate, KitOut, KitSummary, KitReadsIn, KitReadsOut, ClaimRequest,
+)
 from app.schemas.panel import TagLayoutOut
 from app.services import storage
 from app.services.kit_reads import set_kit_reads
+from app.services import claim_codes
 
 router = APIRouter(prefix="/kits", tags=["kits"])
 
@@ -61,6 +64,14 @@ def _can_access(kit: Kit, user: User) -> bool:
     return user.is_admin or any(u.id == user.id for u in kit.users)
 
 
+def _attach_claim_emails(db: Session, kits: list[Kit]) -> None:
+    """Set the transient `claimed_by_email` (read by Kit{Summary,Out}) for a batch of kits."""
+    ids = {k.claimed_by for k in kits if k.claimed_by}
+    emails = dict(db.execute(select(User.id, User.email).where(User.id.in_(ids))).all()) if ids else {}
+    for k in kits:
+        k.claimed_by_email = emails.get(k.claimed_by) if k.claimed_by else None
+
+
 # ---------- tag layout (for the admin kit form) ----------
 
 @router.get("/tag-layout", response_model=TagLayoutOut)
@@ -95,6 +106,7 @@ def list_kits(db: Session = Depends(get_db), current: User = Depends(get_current
             by_kit[kid].append(KitStudyRef(id=sid, name=sname, project_id=pid, population_id=popid))
     for k in kits:
         k.studies = by_kit.get(k.id, [])   # transient attr read by KitSummary
+    _attach_claim_emails(db, list(kits))
     return kits
 
 
@@ -182,6 +194,7 @@ def get_kit(kit_id: int, db: Session = Depends(get_db), current: User = Depends(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Kit not found")
     if not _can_access(kit, current):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this kit")
+    _attach_claim_emails(db, [kit])
     return kit
 
 
@@ -221,9 +234,58 @@ def create_kit(payload: KitCreate, db: Session = Depends(get_db), admin: User = 
         controls=_build_controls(payload.kit_code, payload.controls),
         users=list(assigned),
     )
+    code = claim_codes.assign_new_code(kit)   # store hmac; return plaintext once (below)
     db.add(kit)
     db.commit()
     db.refresh(kit)
+    kit.claim_code = code                     # transient — serialized in KitOut this once only
+    return kit
+
+
+# ---------- claim codes (self-service kit access) ----------
+
+@router.post("/claim", response_model=KitOut)
+def claim_kit(payload: ClaimRequest, db: Session = Depends(get_db),
+              current: User = Depends(get_current_user)):
+    """Redeem a kit's claim code — attaches the kit to the current user."""
+    try:
+        kit = claim_codes.redeem(db, current, payload.code)
+    except claim_codes.CodeNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid or unknown kit code")
+    except claim_codes.AlreadyClaimed:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This kit has already been claimed")
+    db.commit()
+    db.refresh(kit)
+    _attach_claim_emails(db, [kit])
+    return kit
+
+
+@router.post("/{kit_id}/claim-code", response_model=KitOut)
+def regenerate_claim_code(kit_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Issue a fresh claim code for a kit (invalidates the old one). Returns the plaintext once."""
+    kit = db.get(Kit, kit_id)
+    if kit is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kit not found")
+    code = claim_codes.assign_new_code(kit)
+    db.commit()
+    db.refresh(kit)
+    kit.claim_code = code
+    _attach_claim_emails(db, [kit])
+    return kit
+
+
+@router.delete("/{kit_id}/claim", response_model=KitOut)
+def revoke_claim(kit_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Detach the claimer from a kit (admin override)."""
+    kit = db.get(Kit, kit_id)
+    if kit is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kit not found")
+    kit.users = [u for u in kit.users if u.id != kit.claimed_by]
+    kit.claimed_by = None
+    kit.claimed_at = None
+    db.commit()
+    db.refresh(kit)
+    _attach_claim_emails(db, [kit])
     return kit
 
 

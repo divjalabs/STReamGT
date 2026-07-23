@@ -114,6 +114,7 @@ class KitSummary(BaseModel):
     tag_columns: list[TagColumnOut]
     controls: list[ControlOut] = []      # control layout (positions/types) for the submit plate
     reads: KitReadsBrief | None = None   # current server-side FASTQ pair, if any
+    claimed_by_email: str | None = None  # who redeemed this kit's code (None = unclaimed); admin view
     assigned_user_ids: list[int]
     studies: list[KitStudyRef] = []      # studies this kit is attached to (transient; see api/kits)
 
@@ -130,3 +131,9 @@ class KitOut(BaseModel):
     tag_columns: list[TagColumnOut]
     controls: list[ControlOut]
     assigned_user_ids: list[int]
+    claimed_by_email: str | None = None
+    claim_code: str | None = None        # plaintext, returned ONLY on create/regenerate
+
+
+class ClaimRequest(BaseModel):
+    code: str = Field(min_length=1)

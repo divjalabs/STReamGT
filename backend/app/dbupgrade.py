@@ -34,6 +34,11 @@ DDL = [
         created_at timestamptz NOT NULL DEFAULT now(),
         positions json NOT NULL DEFAULT '[]'::json
     )""",
+    # 0008 — kit claim codes (self-service access)
+    "ALTER TABLE kits ADD COLUMN IF NOT EXISTS claim_code_hmac varchar(64)",
+    "ALTER TABLE kits ADD COLUMN IF NOT EXISTS claimed_by integer REFERENCES users(id)",
+    "ALTER TABLE kits ADD COLUMN IF NOT EXISTS claimed_at timestamptz",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ix_kits_claim_code_hmac ON kits (claim_code_hmac)",
     # 0007 — per-kit server-side FASTQ reads
     """CREATE TABLE IF NOT EXISTS kit_reads (
         id serial PRIMARY KEY,

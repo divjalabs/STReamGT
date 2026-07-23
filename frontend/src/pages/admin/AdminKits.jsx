@@ -56,6 +56,9 @@ export default function AdminKits() {
   const [assignees, setAssignees] = useState([]);
   const [description, setDescription] = useState("");
 
+  // claim codes shown once after create / regenerate
+  const [newCodes, setNewCodes] = useState([]);
+
   // row editing
   const [editId, setEditId] = useState(null);
   const [edit, setEdit] = useState({ status: "sent", description: "", assigned_user_ids: [] });
@@ -116,14 +119,21 @@ export default function AdminKits() {
       description: description || null,
     };
     const failed = [];
+    const created = [];
     for (const code of codeList) {
-      try { await api.createKit({ kit_code: code, ...base }); }
+      try { const k = await api.createKit({ kit_code: code, ...base }); created.push(k); }
       catch (e) { failed.push(`${code}: ${e.message}`); }
     }
     setBusy(false);
+    setNewCodes(created.map((k) => ({ kit_code: k.kit_code, claim_code: k.claim_code })));
     if (failed.length) setErr("Some kits failed — " + failed.join(" | "));
     else { setCodes(""); setPanelId(""); setTags([]); setAssignees([]); setDescription(""); setControls([]); }
     load();
+  };
+
+  const regenCode = async (id) => {
+    try { const k = await api.regenerateClaimCode(id); setNewCodes([{ kit_code: k.kit_code, claim_code: k.claim_code }]); }
+    catch (e) { setErr(e.message); }
   };
 
   const startEdit = (k) => {
@@ -197,10 +207,32 @@ export default function AdminKits() {
         </form>
       </section>
 
+      {newCodes.length > 0 && (
+        <section className="card claim-codes-card">
+          <div className="row">
+            <b>Claim code{newCodes.length > 1 ? "s" : ""} — copy now, shown only once</b>
+            <span className="spacer" />
+            <button type="button" className="link" onClick={() => setNewCodes([])}>dismiss</button>
+          </div>
+          <p className="muted small">Ship each code with its kit. The buyer redeems it to unlock the kit — no admin step.</p>
+          <table className="table">
+            <tbody>
+              {newCodes.map((c) => (
+                <tr key={c.kit_code}>
+                  <td>{c.kit_code}</td>
+                  <td className="mono"><b>{c.claim_code}</b></td>
+                  <td><button type="button" className="linkish" onClick={() => navigator.clipboard?.writeText(c.claim_code)}>copy</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       <h2>All kits <span className="muted">({kits.length})</span></h2>
       <table className="table">
         <thead>
-          <tr><th>Kit</th><th>Species</th><th>Tags</th><th>Assigned to</th><th>Status</th><th></th></tr>
+          <tr><th>Kit</th><th>Species</th><th>Tags</th><th>Assigned to</th><th>Claimed by</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           {kits.map((k) => editId === k.id ? (
@@ -210,6 +242,7 @@ export default function AdminKits() {
               <td className="muted">{k.tag_columns.map((t) => t.name).join(", ")}</td>
               <td><AssigneePicker users={users} value={edit.assigned_user_ids}
                     onChange={(v) => setEdit({ ...edit, assigned_user_ids: v })} /></td>
+              <td className="muted">{k.claimed_by_email || "—"}</td>
               <td>
                 <select value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}>
                   {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -226,9 +259,11 @@ export default function AdminKits() {
               <td>{k.species || "—"}</td>
               <td className="muted">{k.tag_columns.map((t) => t.name).join(", ")}</td>
               <td className="muted">{k.assigned_user_ids.map(emailFor).join(", ") || "—"}</td>
+              <td className="muted">{k.claimed_by_email || "unclaimed"}</td>
               <td><span className={`badge ${STATUS_CLASS[k.status] || ""}`}>{k.status}</span></td>
               <td>
                 <button className="secondary" onClick={() => startEdit(k)}>edit</button>{" "}
+                <button className="linkish" onClick={() => regenCode(k.id)}>code</button>{" "}
                 <button className="link" onClick={() => remove(k.id)}>delete</button>
               </td>
             </tr>

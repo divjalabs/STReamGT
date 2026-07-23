@@ -40,6 +40,17 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> Token:
         organisation=payload.organisation,
     )
     db.add(user)
+    db.flush()   # assign user.id without committing, so a bad claim code rolls back the signup
+
+    if payload.claim_code:
+        from app.services import claim_codes
+        try:
+            claim_codes.redeem(db, user, payload.claim_code)
+        except claim_codes.CodeNotFound:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid or unknown kit code")
+        except claim_codes.AlreadyClaimed:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This kit has already been claimed")
+
     db.commit()
     db.refresh(user)
 

@@ -145,6 +145,65 @@ def test_kit_reads_crud(client, catalog, admin_token, user_token, monkeypatch):
     assert client.get(f"/api/kits/{kit_id}/reads", headers=bearer(tok_a)).json() is None
 
 
+def test_kit_claim_flow(client, catalog, admin_token):
+    tok = register(client, "buyer@x.com")
+    kit = _register_kit(client, admin_token, [], code="CLAIMKIT").json()   # assigned to nobody
+    code = kit["claim_code"]
+    assert code and "-" in code
+    assert client.get("/api/kits", headers=bearer(tok)).json() == []       # inert until claimed
+    # wrong code -> 404
+    assert client.post("/api/kits/claim", json={"code": "WRON-GWRO-NGWR-ONGW"},
+                       headers=bearer(tok)).status_code == 404
+    # claim -> visible to the buyer
+    assert client.post("/api/kits/claim", json={"code": code}, headers=bearer(tok)).status_code == 200
+    assert [k["kit_code"] for k in client.get("/api/kits", headers=bearer(tok)).json()] == ["CLAIMKIT"]
+    # a second user cannot claim the same kit
+    tok2 = register(client, "other@x.com")
+    assert client.post("/api/kits/claim", json={"code": code}, headers=bearer(tok2)).status_code == 409
+    # admin sees every kit + who claimed it
+    adm = next(k for k in client.get("/api/kits", headers=bearer(admin_token)).json()
+               if k["kit_code"] == "CLAIMKIT")
+    assert adm["claimed_by_email"] == "buyer@x.com"
+
+
+def test_claim_code_never_stored_plaintext(client, catalog, admin_token):
+    from app.db import SessionLocal
+    from app.models import Kit
+    from sqlalchemy import select
+    kit = _register_kit(client, admin_token, [], code="HASHONLY").json()
+    with SessionLocal() as db:
+        row = db.scalar(select(Kit).where(Kit.kit_code == "HASHONLY"))
+        assert row.claim_code_hmac and len(row.claim_code_hmac) == 64
+        assert kit["claim_code"] not in row.claim_code_hmac      # only the hmac is persisted
+
+
+def test_regenerate_and_revoke(client, catalog, admin_token):
+    tok = register(client, "buyer@x.com")
+    kit = _register_kit(client, admin_token, [], code="REGEN").json()
+    kid, old = kit["id"], kit["claim_code"]
+    new = client.post(f"/api/kits/{kid}/claim-code", headers=bearer(admin_token)).json()["claim_code"]
+    assert new != old
+    assert client.post("/api/kits/claim", json={"code": old}, headers=bearer(tok)).status_code == 404
+    assert client.post("/api/kits/claim", json={"code": new}, headers=bearer(tok)).status_code == 200
+    # admin revoke detaches the claimer
+    assert client.delete(f"/api/kits/{kid}/claim", headers=bearer(admin_token)).status_code == 200
+    assert client.get("/api/kits", headers=bearer(tok)).json() == []
+
+
+def test_register_with_claim_code(client, catalog, admin_token):
+    code = _register_kit(client, admin_token, [], code="ONBOARD").json()["claim_code"]
+    r = client.post("/api/auth/register",
+                    json={"email": "new@x.com", "password": "password123", "claim_code": code})
+    assert r.status_code == 201
+    tok = r.json()["access_token"]
+    assert [k["kit_code"] for k in client.get("/api/kits", headers=bearer(tok)).json()] == ["ONBOARD"]
+    # a bad code rolls back the signup entirely
+    bad = client.post("/api/auth/register",
+                      json={"email": "nope@x.com", "password": "password123", "claim_code": "BADX-BADX-BADX-BADX"})
+    assert bad.status_code == 404
+    assert client.post("/api/auth/login", data={"username": "nope@x.com", "password": "password123"}).status_code == 401
+
+
 def test_access_control(client, catalog, admin_token):
     tok_a = register(client, "a@x.com")
     tok_b = register(client, "b@x.com")

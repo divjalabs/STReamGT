@@ -62,12 +62,25 @@ export default function Kits() {
   const [err, setErr] = useState(null);
   const [query, setQuery] = useState("");
   const [species, setSpecies] = useState("");
+  const [claimCode, setClaimCode] = useState("");
+  const [claimMsg, setClaimMsg] = useState(null);
+  const [claiming, setClaiming] = useState(false);
 
   const load = () => {
     api.listKits().then(setKits).catch((e) => setErr(e.message));
     api.listJobs().then(setJobs).catch(() => {});
   };
   useEffect(() => { load(); }, []);
+
+  const claim = async (e) => {
+    e.preventDefault();
+    setClaimMsg(null); setErr(null); setClaiming(true);
+    try {
+      const kit = await api.claimKit(claimCode.trim());
+      setClaimCode(""); setClaimMsg(`✓ ${kit.kit_code} added to your kits.`);
+      load();
+    } catch (e) { setErr(e.message); } finally { setClaiming(false); }
+  };
 
   const markReceived = async (id) => {
     try { await api.updateKit(id, { status: "received" }); load(); }
@@ -93,6 +106,18 @@ export default function Kits() {
         <Link to="/submit"><button>New analysis</button></Link>
       </div>
       {err && <p className="error">{err}</p>}
+      {claimMsg && <p className="ok">{claimMsg}</p>}
+
+      <form className={`card claim-card ${kits && kits.length === 0 ? "claim-hero" : ""}`} onSubmit={claim}>
+        <b>Have a kit code?</b>
+        <p className="muted small">Enter the code that came with your kit to add it to your account.</p>
+        <div className="claim-row">
+          <input value={claimCode} onChange={(e) => setClaimCode(e.target.value)}
+                 placeholder="XXXX-XXXX-XXXX-XXXX" />
+          <button type="submit" disabled={claiming || !claimCode.trim()}>{claiming ? "Claiming…" : "Claim kit"}</button>
+        </div>
+      </form>
+
       {kits && kits.length > 0 && (
         <div className="kit-filters">
           <input

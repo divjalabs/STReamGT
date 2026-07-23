@@ -269,6 +269,12 @@ button.danger:disabled { opacity: .45; cursor: not-allowed; }
 .kit-jobs th, .kit-jobs td { padding: .3rem .5rem; }
 .kit-jobs td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
 .kit-nojobs { margin: .5rem 0 0; }
+.claim-card { margin-top: 1rem; }
+.claim-card.claim-hero { border-color: var(--brand); box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+.claim-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: .3rem; }
+.claim-row input { flex: 1 1 16rem; min-width: 12rem; font-family: ui-monospace, Menlo, monospace; letter-spacing: .04em; }
+.claim-codes-card { border-color: #f0c14b; background: rgba(240,193,75,.1); }
+.claim-codes-card td.mono, .claim-codes-card .mono { font-family: ui-monospace, Menlo, monospace; letter-spacing: .06em; }
 .kit-reads { margin: .3rem 0 .2rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .reads-form { flex-basis: 100%; margin-top: .3rem; padding: .5rem .7rem; border: 1px solid var(--line);
   border-radius: 7px; background: var(--card); display: flex; flex-direction: column; gap: .3rem; }

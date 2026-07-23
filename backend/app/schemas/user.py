@@ -11,6 +11,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     organisation: str | None = None
+    claim_code: str | None = None        # optional: redeem a kit right after sign-up
 
 
 class UserOut(BaseModel):
