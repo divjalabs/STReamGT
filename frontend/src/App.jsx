@@ -5,6 +5,7 @@ import Register from "./pages/Register.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
 import Home from "./pages/Home.jsx";
+import Account from "./pages/Account.jsx";
 import JobDetail from "./pages/JobDetail.jsx";
 import Submit from "./pages/Submit.jsx";
 import Kits from "./pages/Kits.jsx";
@@ -52,7 +53,7 @@ function Nav() {
         {isAdmin && <Link to="/admin/users">Users</Link>}
       </nav>
       <span className="spacer" />
-      <span className="muted">{user.email}{isAdmin ? " (admin)" : ""}</span>
+      <Link to="/account" className="muted">{user.email}{isAdmin ? " (admin)" : ""}</Link>
       <button onClick={() => { logout(); nav("/login"); }}>Log out</button>
     </header>
   );
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<Protected><Home /></Protected>} />
+        <Route path="/account" element={<Protected><Account /></Protected>} />
         <Route path="/jobs" element={<Navigate to="/kits" replace />} />
         <Route path="/manuals/:slug" element={<Manual />} />
         <Route path="/kits" element={<Protected><Kits /></Protected>} />

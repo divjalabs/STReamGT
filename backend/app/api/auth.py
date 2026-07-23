@@ -23,13 +23,17 @@ from app.schemas.user import (
     Token,
     ForgotPasswordIn,
     ResetPasswordIn,
+    ProfileUpdate,
+    ChangePasswordIn,
 )
 from app.services import notify
+from app.services import ratelimit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(ratelimit.limit("register"))])
 def register(payload: UserCreate, db: Session = Depends(get_db)) -> Token:
     existing = db.scalar(select(User).where(User.email == payload.email))
     if existing:
@@ -67,7 +71,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> Token:
     return Token(access_token=token, user=UserOut.model_validate(user))
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Token, dependencies=[Depends(ratelimit.limit("login"))])
 def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
@@ -87,7 +91,34 @@ def me(current: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(current)
 
 
-@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    payload: ProfileUpdate,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> UserOut:
+    """Self-service profile update (organisation only)."""
+    current.organisation = payload.organisation
+    db.commit()
+    db.refresh(current)
+    return UserOut.model_validate(current)
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT,
+             dependencies=[Depends(ratelimit.limit("change_password"))])
+def change_password(
+    payload: ChangePasswordIn,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> None:
+    if not verify_password(payload.current_password, current.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is incorrect")
+    current.password_hash = hash_password(payload.new_password)
+    db.commit()
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT,
+             dependencies=[Depends(ratelimit.limit("forgot_password"))])
 def forgot_password(payload: ForgotPasswordIn, db: Session = Depends(get_db)) -> None:
     """Email a password-reset link. Always 204 — never reveals whether the email exists."""
     user = db.scalar(select(User).where(User.email == payload.email))

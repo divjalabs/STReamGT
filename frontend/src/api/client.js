@@ -64,10 +64,18 @@ export const api = {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: form,
     });
+    if (res.status === 429) {
+      let detail;
+      try { detail = (await res.json()).detail; } catch { detail = null; }
+      throw new Error(detail || "Too many attempts. Please wait a moment and try again.");
+    }
     if (!res.ok) throw new Error("Incorrect email or password");
     return res.json();
   },
   me: () => request("/auth/me"),
+  updateProfile: (body) => request("/auth/me", { method: "PATCH", body }),
+  changePassword: (currentPassword, newPassword) =>
+    request("/auth/change-password", { method: "POST", body: { current_password: currentPassword, new_password: newPassword } }),
   forgotPassword: (email) =>
     request("/auth/forgot-password", { method: "POST", body: { email } }),
   resetPassword: (token, newPassword) =>

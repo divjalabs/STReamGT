@@ -32,6 +32,17 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class ProfileUpdate(BaseModel):
+    """Self-service: update your own organisation."""
+
+    organisation: str | None = None
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     reset_token_expire_minutes: int = 60         # password-reset links expire in 1h
     jwt_algorithm: str = "HS256"
 
+    # In-memory per-IP rate limiting on auth/claim endpoints (defence-in-depth).
+    rate_limit_enabled: bool = True
+
     # --- Database ---
     # Either set database_url directly (local/dev), or provide db_host + db_password
     # (cloud: password injected from Secrets Manager, host from Aurora) and let

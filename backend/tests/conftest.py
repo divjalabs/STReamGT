@@ -3,6 +3,7 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///./test.db")
 os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")  # off by default so the suite's many logins pass
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

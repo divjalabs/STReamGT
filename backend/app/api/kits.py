@@ -20,6 +20,7 @@ from app.schemas.panel import TagLayoutOut
 from app.services import storage
 from app.services.kit_reads import set_kit_reads
 from app.services import claim_codes
+from app.services import ratelimit
 
 router = APIRouter(prefix="/kits", tags=["kits"])
 
@@ -244,7 +245,7 @@ def create_kit(payload: KitCreate, db: Session = Depends(get_db), admin: User = 
 
 # ---------- claim codes (self-service kit access) ----------
 
-@router.post("/claim", response_model=KitOut)
+@router.post("/claim", response_model=KitOut, dependencies=[Depends(ratelimit.limit("claim"))])
 def claim_kit(payload: ClaimRequest, db: Session = Depends(get_db),
               current: User = Depends(get_current_user)):
     """Redeem a kit's claim code — attaches the kit to the current user."""
