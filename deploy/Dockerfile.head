@@ -17,9 +17,15 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     JOB_SCRATCH_ROOT=/scratch PIPELINE_DIR=/app/pipeline \
     NXF_VER=25.10.4
 
-# Java (Nextflow) + curl. Base is Ubuntu 22.04, which has openjdk-17.
+# Java (Nextflow) + curl. Base is Ubuntu 22.04 (jammy), which has openjdk-17.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         openjdk-17-jre-headless curl procps ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# pg_dump matching Aurora's PG major (16) for logical DB backups via `python -m app.dbbackup`.
+RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /etc/apt/trusted.gpg.d/pgdg.asc \
+    && echo "deb https://apt.postgresql.org/pub/repos/apt jammy-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends postgresql-client-16 \
     && rm -rf /var/lib/apt/lists/*
 
 # Nextflow (auto-fetches the exact NXF_VER build).
