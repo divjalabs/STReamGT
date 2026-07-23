@@ -139,3 +139,13 @@ def object_exists(key: str) -> bool:
         return True
     except ClientError:
         return False
+
+
+def delete_object(key: str) -> None:
+    """Best-effort delete (used when replacing a kit's stored reads)."""
+    if not key:
+        return
+    try:
+        _client().delete_object(Bucket=settings.s3_bucket, Key=key)
+    except Exception:  # noqa: BLE001 — deletion is best-effort; never fail the request
+        pass

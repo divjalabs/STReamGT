@@ -1,10 +1,59 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, uploadFile } from "../api/client.js";
 
 const KIT_STATUS_CLASS = { analysed: "ok", reanalyse: "warn", received: "", sent: "muted" };
 const JOB_STATUS_CLASS = { succeeded: "ok", failed: "error", queued: "muted" };
 const TERMINAL = ["succeeded", "failed"];
+
+// Per-kit FASTQ reads: shows the saved pair (if any) and lets an admin/user upload or replace it.
+function ReadsUploader({ kit, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [f1, setF1] = useState(null);
+  const [f2, setF2] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const reads = kit.reads;
+
+  const upload = async () => {
+    if (!f1 || !f2) return setErr("Choose both R1 and R2 files.");
+    setBusy(true); setErr(null);
+    try {
+      const k1 = await uploadFile(f1, "fastq", () => {}, kit.id);
+      const k2 = await uploadFile(f2, "fastq", () => {}, kit.id);
+      await api.setKitReads(kit.id, {
+        fastq1_key: k1, fastq2_key: k2, fastq1_name: f1.name, fastq2_name: f2.name,
+        size1: f1.size, size2: f2.size,
+      });
+      setOpen(false); setF1(null); setF2(null);
+      onChange();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="kit-reads">
+      <span className="muted small">
+        {reads
+          ? `Reads: ${reads.fastq1_name || "R1"} + ${reads.fastq2_name || "R2"} · ${new Date(reads.uploaded_at).toLocaleDateString()}`
+          : "No reads on server"}
+      </span>{" "}
+      <button type="button" className="linkish" onClick={() => setOpen((v) => !v)}>
+        {reads ? "replace" : "upload reads"}
+      </button>
+      {open && (
+        <div className="reads-form">
+          {err && <p className="error small">{err}</p>}
+          <label className="small">R1 <input type="file" accept=".gz,.fastq" onChange={(e) => setF1(e.target.files[0])} /></label>
+          <label className="small">R2 <input type="file" accept=".gz,.fastq" onChange={(e) => setF2(e.target.files[0])} /></label>
+          <div className="submit-bar">
+            <button type="button" disabled={busy} onClick={upload}>{busy ? "Uploading…" : "Save to kit"}</button>{" "}
+            <button type="button" className="secondary" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // My kits — each kit shows its analyses (jobs) underneath, plus a "Run analysis" shortcut.
 export default function Kits() {
@@ -101,6 +150,7 @@ export default function Kits() {
                     {busy && <span className="muted small">a job is running</span>}
                   </div>
                 </div>
+                <ReadsUploader kit={k} onChange={load} />
                 {kjobs.length === 0 ? (
                   <p className="muted small kit-nojobs">No analyses yet.</p>
                 ) : (

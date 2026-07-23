@@ -67,6 +67,32 @@ class KitUpdate(BaseModel):
     assigned_user_ids: list[int] | None = None
 
 
+class KitReadsIn(BaseModel):
+    """Register/replace a kit's server-side FASTQ pair (keys already uploaded to S3)."""
+    fastq1_key: str
+    fastq2_key: str
+    fastq1_name: str | None = None
+    fastq2_name: str | None = None
+    size1: int | None = None
+    size2: int | None = None
+
+
+class KitReadsBrief(BaseModel):
+    """Compact reads status for the My kits list."""
+    model_config = ConfigDict(from_attributes=True)
+    fastq1_name: str | None
+    fastq2_name: str | None
+    uploaded_at: datetime
+
+
+class KitReadsOut(KitReadsBrief):
+    fastq1_key: str
+    fastq2_key: str
+    size1: int | None = None
+    size2: int | None = None
+    uploaded_by_email: str | None = None
+
+
 class KitStudyRef(BaseModel):
     """A study this kit is attached to — lets the Submit page pre-fill the ingestion target."""
     model_config = ConfigDict(from_attributes=True)
@@ -87,6 +113,7 @@ class KitSummary(BaseModel):
     updated_at: datetime | None = None   # last status change; None on older rows pre-migration
     tag_columns: list[TagColumnOut]
     controls: list[ControlOut] = []      # control layout (positions/types) for the submit plate
+    reads: KitReadsBrief | None = None   # current server-side FASTQ pair, if any
     assigned_user_ids: list[int]
     studies: list[KitStudyRef] = []      # studies this kit is attached to (transient; see api/kits)
 

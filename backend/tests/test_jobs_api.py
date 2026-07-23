@@ -276,6 +276,30 @@ def test_init_upload_small_uses_put(client, user_token):
     assert body["method"] == "put" and body["put_url"] and body["key"].endswith("HRM01.xlsx")
 
 
+def test_init_upload_kit_scoped(client, catalog, admin_token, user_token):
+    kit_id = _make_kit(client, admin_token, assigned_ids=[user_id("user@x.com")])
+    r = client.post(
+        "/api/jobs/uploads",
+        json={"filename": "reads_1.fastq.gz", "size": 1024, "purpose": "fastq", "kit_id": kit_id},
+        headers=bearer(user_token),
+    )
+    assert r.status_code == 200
+    assert r.json()["key"].startswith(f"reads/kit/{kit_id}/")
+
+
+def test_create_job_saves_kit_reads(client, catalog, admin_token, user_token, no_enqueue):
+    kit_id = _make_kit(client, admin_token, assigned_ids=[user_id("user@x.com")])
+    payload = job_payload(kit_id)
+    payload["fastq1_ref"] = f"reads/kit/{kit_id}/u/reads_1.fastq.gz"
+    payload["fastq2_ref"] = f"reads/kit/{kit_id}/u/reads_2.fastq.gz"
+    assert client.post("/api/jobs", json=payload, headers=bearer(user_token)).status_code == 201
+    reads = client.get(f"/api/kits/{kit_id}/reads", headers=bearer(user_token)).json()
+    assert reads["fastq1_key"] == payload["fastq1_ref"]
+    # and it surfaces on the kit list
+    k = next(k for k in client.get("/api/kits", headers=bearer(user_token)).json() if k["id"] == kit_id)
+    assert k["reads"]["fastq1_name"] == "reads_1.fastq.gz"
+
+
 def test_kit_summary_lists_attached_studies(client, catalog, admin_token, user_token):
     pid = client.post("/api/projects", json={"name": "P"}, headers=bearer(user_token)).json()["id"]
     pop = client.post(f"/api/projects/{pid}/populations", json={"name": "Pop"},

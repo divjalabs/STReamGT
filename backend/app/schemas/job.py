@@ -14,6 +14,7 @@ class UploadInitRequest(BaseModel):
     size: int = Field(ge=0)
     content_type: str = "application/octet-stream"
     purpose: str = Field(default="fastq", pattern="^(fastq|sample)$")
+    kit_id: int | None = None        # when set (fastq), store under the kit's reads/ prefix
 
 
 class UploadInitResponse(BaseModel):

@@ -139,12 +139,42 @@ class Kit(Base):
     controls: Mapped[list["Control"]] = relationship(
         back_populates="kit", cascade="all, delete-orphan", order_by="Control.position"
     )
+    reads: Mapped["KitReads | None"] = relationship(
+        back_populates="kit", uselist=False, cascade="all, delete-orphan"
+    )
     # Users granted access to this kit (non-admins). Admins see all kits regardless.
     users: Mapped[list["User"]] = relationship(secondary=kit_access)  # noqa: F821
 
     @property
     def assigned_user_ids(self) -> list[int]:
         return [u.id for u in self.users]
+
+
+class KitReads(Base):
+    """The one current FASTQ pair uploaded to the server for a kit (replaced on new upload).
+
+    Stored under S3 prefix reads/kit/{kit_id}/... Reused across analysis runs so a user need not
+    re-upload (e.g. to re-run a failed job); admins can pre-stage reads for a kit.
+    """
+
+    __tablename__ = "kit_reads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kit_id: Mapped[int] = mapped_column(
+        ForeignKey("kits.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
+    fastq1_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    fastq2_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    fastq1_name: Mapped[str | None] = mapped_column(String(255))
+    fastq2_name: Mapped[str | None] = mapped_column(String(255))
+    size1: Mapped[int | None] = mapped_column(Integer)
+    size2: Mapped[int | None] = mapped_column(Integer)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    kit: Mapped["Kit"] = relationship(back_populates="reads")
 
 
 class TagColumn(Base):

@@ -10,11 +10,13 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
-    User, Kit, TagColumn, Control, PrimerPanel, TagLayout, KitStatus, kit_access,
+    User, Kit, KitReads, TagColumn, Control, PrimerPanel, TagLayout, KitStatus, kit_access,
 )
 from app.auth.deps import get_current_user, require_admin
-from app.schemas.kit import KitCreate, KitUpdate, KitOut, KitSummary
+from app.schemas.kit import KitCreate, KitUpdate, KitOut, KitSummary, KitReadsIn, KitReadsOut
 from app.schemas.panel import TagLayoutOut
+from app.services import storage
+from app.services.kit_reads import set_kit_reads
 
 router = APIRouter(prefix="/kits", tags=["kits"])
 
@@ -71,7 +73,8 @@ def get_tag_layout(db: Session = Depends(get_db), _: User = Depends(require_admi
 @router.get("", response_model=list[KitSummary])
 def list_kits(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """Admins see all kits; non-admins see only kits granted to them."""
-    stmt = select(Kit).order_by(Kit.kit_code)
+    from sqlalchemy.orm import selectinload
+    stmt = select(Kit).options(selectinload(Kit.reads)).order_by(Kit.kit_code)
     if not current.is_admin:
         stmt = stmt.join(kit_access, kit_access.c.kit_id == Kit.id).where(
             kit_access.c.user_id == current.id
@@ -112,6 +115,64 @@ def download_control_template(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{kit.kit_code}_plate_template.xlsx"'},
     )
+
+
+# ---------- per-kit server-side FASTQ reads ----------
+
+def _reads_out(db: Session, r: KitReads) -> KitReadsOut:
+    email = db.get(User, r.uploaded_by).email if r.uploaded_by else None
+    return KitReadsOut(
+        fastq1_key=r.fastq1_key, fastq2_key=r.fastq2_key,
+        fastq1_name=r.fastq1_name, fastq2_name=r.fastq2_name,
+        size1=r.size1, size2=r.size2, uploaded_at=r.uploaded_at, uploaded_by_email=email,
+    )
+
+
+def _load_kit(kit_id: int, db: Session, current: User) -> Kit:
+    kit = db.get(Kit, kit_id)
+    if kit is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kit not found")
+    if not _can_access(kit, current):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this kit")
+    return kit
+
+
+@router.get("/{kit_id}/reads", response_model=KitReadsOut | None)
+def get_kit_reads(kit_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    kit = _load_kit(kit_id, db, current)
+    return _reads_out(db, kit.reads) if kit.reads else None
+
+
+@router.put("/{kit_id}/reads", response_model=KitReadsOut)
+def put_kit_reads(
+    kit_id: int, payload: KitReadsIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    kit = _load_kit(kit_id, db, current)
+    prefix = f"reads/kit/{kit_id}/"
+    for key in (payload.fastq1_key, payload.fastq2_key):
+        if not key.startswith(prefix):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                "reads must be uploaded to this kit before registering")
+        if not storage.object_exists(key):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"uploaded object missing: {key}")
+    r = set_kit_reads(
+        db, kit, fastq1_key=payload.fastq1_key, fastq2_key=payload.fastq2_key,
+        fastq1_name=payload.fastq1_name, fastq2_name=payload.fastq2_name,
+        size1=payload.size1, size2=payload.size2, uploaded_by=current.id,
+    )
+    db.commit()
+    return _reads_out(db, r)
+
+
+@router.delete("/{kit_id}/reads", status_code=status.HTTP_204_NO_CONTENT)
+def delete_kit_reads(kit_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    kit = _load_kit(kit_id, db, current)
+    if kit.reads:
+        storage.delete_object(kit.reads.fastq1_key)
+        storage.delete_object(kit.reads.fastq2_key)
+        db.delete(kit.reads)
+        db.commit()
 
 
 @router.get("/{kit_id}", response_model=KitOut)

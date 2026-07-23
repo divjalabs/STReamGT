@@ -15,6 +15,7 @@ from app.config import settings
 from app.db import get_db
 from app.models import (
     User, UserRole, Kit, Job, SampleBatch, JobStatus, KitStatus, ResultKind, ResultFile,
+    FastqSource,
 )
 from app.auth.deps import get_current_user
 from app.services import storage, notify
@@ -69,10 +70,21 @@ def _safe_name(name: str) -> str:
 
 @router.post("/uploads", response_model=UploadInitResponse)
 def init_upload(
-    req: UploadInitRequest, current: User = Depends(get_current_user)
+    req: UploadInitRequest,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
 ) -> UploadInitResponse:
-    """Issue a presigned upload target under the user's namespace. Server picks the key."""
-    key = f"uploads/{current.id}/{uuid.uuid4()}/{_safe_name(req.filename)}"
+    """Issue a presigned upload target. FASTQ for a kit goes under that kit's reads/ prefix;
+    otherwise under the user's namespace. Server picks the key."""
+    if req.kit_id is not None and req.purpose == "fastq":
+        kit = db.get(Kit, req.kit_id)
+        if kit is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Kit not found")
+        if not current.is_admin and not any(u.id == current.id for u in kit.users):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this kit")
+        key = f"reads/kit/{req.kit_id}/{uuid.uuid4()}/{_safe_name(req.filename)}"
+    else:
+        key = f"uploads/{current.id}/{uuid.uuid4()}/{_safe_name(req.filename)}"
     if req.size >= MULTIPART_THRESHOLD:
         mp = storage.start_multipart(key, req.size)
         return UploadInitResponse(
@@ -220,6 +232,16 @@ def create_job(
         ],
     )
     db.add(job)
+    # Freshly uploaded reads (under this kit's prefix) become the kit's saved server reads.
+    if payload.fastq_source == FastqSource.upload and \
+            payload.fastq1_ref.startswith(f"reads/kit/{kit.id}/"):
+        from app.services.kit_reads import set_kit_reads
+        set_kit_reads(
+            db, kit, fastq1_key=payload.fastq1_ref, fastq2_key=payload.fastq2_ref,
+            fastq1_name=os.path.basename(payload.fastq1_ref),
+            fastq2_name=os.path.basename(payload.fastq2_ref),
+            uploaded_by=current.id,
+        )
     db.commit()
     db.refresh(job)
     enqueue_job(job.id)

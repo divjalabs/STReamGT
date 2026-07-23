@@ -21,9 +21,10 @@ export default function Submit() {
   const [searchParams] = useSearchParams();
   const [kits, setKits] = useState([]);
   const [kitId, setKitId] = useState(searchParams.get("kit") || "");
-  const [fastqMode, setFastqMode] = useState("upload"); // "upload" | "ref"
+  const [fastqMode, setFastqMode] = useState("upload"); // "upload" | "server" | "ref"
   const [fq1, setFq1] = useState({ file: null, ref: "", pct: 0 });
   const [fq2, setFq2] = useState({ file: null, ref: "", pct: 0 });
+  const [serverReads, setServerReads] = useState(null);  // kit's saved FASTQ pair, if any
   const [expectedReads, setExpectedReads] = useState(10000000);
   const [batches, setBatches] = useState([newBatch()]);
   const [target, setTarget] = useState(EMPTY_TARGET);
@@ -37,6 +38,16 @@ export default function Submit() {
   }, []);
 
   const kit = kits.find((k) => String(k.id) === String(kitId));
+
+  // Load the kit's saved server reads; default to reusing them when present.
+  useEffect(() => {
+    if (!kit) { setServerReads(null); return; }
+    api.getKitReads(kit.id).then((r) => {
+      setServerReads(r);
+      if (r) setFastqMode("server");
+    }).catch(() => setServerReads(null));
+  }, [kit?.id]);
+
   // A kit may have only one job in flight; block resubmission until it finishes.
   const TERMINAL = ["succeeded", "failed"];
   const kitBusy = !!kit && jobs.some((j) => j.kit_id === kit.id && !TERMINAL.includes(j.status));
@@ -107,10 +118,16 @@ export default function Submit() {
       // 1. FASTQ: upload or reference.
       let fastq_source = "upload";
       let fastq1_ref, fastq2_ref;
-      if (fastqMode === "upload") {
+      if (fastqMode === "server") {
+        if (!serverReads) throw new Error("No reads saved on the server for this kit — upload instead.");
+        fastq_source = "server";
+        fastq1_ref = serverReads.fastq1_key;
+        fastq2_ref = serverReads.fastq2_key;
+      } else if (fastqMode === "upload") {
         if (!fq1.file || !fq2.file) throw new Error("Upload both FASTQ files.");
-        fastq1_ref = await uploadFile(fq1.file, "fastq", (p) => setFq1((s) => ({ ...s, pct: p })));
-        fastq2_ref = await uploadFile(fq2.file, "fastq", (p) => setFq2((s) => ({ ...s, pct: p })));
+        // upload under the kit's prefix → the backend saves them as this kit's reads
+        fastq1_ref = await uploadFile(fq1.file, "fastq", (p) => setFq1((s) => ({ ...s, pct: p })), kit.id);
+        fastq2_ref = await uploadFile(fq2.file, "fastq", (p) => setFq2((s) => ({ ...s, pct: p })), kit.id);
       } else {
         if (!fq1.ref || !fq2.ref) throw new Error("Provide both FASTQ paths/links.");
         fastq_source = fq1.ref.startsWith("http") ? "link" : "server";
@@ -208,15 +225,27 @@ export default function Submit() {
         <section className="card">
           <h2>FASTQ (one pair per run, shared by all batches)</h2>
           <div className="tabs">
+            {serverReads && (
+              <button type="button" className={fastqMode === "server" ? "active" : ""} onClick={() => setFastqMode("server")}>Reads on server</button>
+            )}
             <button type="button" className={fastqMode === "upload" ? "active" : ""} onClick={() => setFastqMode("upload")}>Upload</button>
             <button type="button" className={fastqMode === "ref" ? "active" : ""} onClick={() => setFastqMode("ref")}>Server path / link</button>
           </div>
-          {fastqMode === "upload" ? (
+          {fastqMode === "server" ? (
+            serverReads ? (
+              <div className="server-reads">
+                <p><b>R1:</b> {serverReads.fastq1_name || serverReads.fastq1_key}</p>
+                <p><b>R2:</b> {serverReads.fastq2_name || serverReads.fastq2_key}</p>
+                <p className="muted small">Saved for this kit{serverReads.uploaded_by_email ? ` by ${serverReads.uploaded_by_email}` : ""} on {new Date(serverReads.uploaded_at).toLocaleString()}. These will be reused — no upload needed.</p>
+              </div>
+            ) : <p className="muted">No reads saved on the server for this kit yet.</p>
+          ) : fastqMode === "upload" ? (
             <>
               <label>fastqF (R1)<input type="file" accept=".gz,.fastq" onChange={(e) => setFq1({ ...fq1, file: e.target.files[0] })} /></label>
               {fq1.pct > 0 && <Progress pct={fq1.pct} />}
               <label>fastqR (R2)<input type="file" accept=".gz,.fastq" onChange={(e) => setFq2({ ...fq2, file: e.target.files[0] })} /></label>
               {fq2.pct > 0 && <Progress pct={fq2.pct} />}
+              <p className="muted small">Uploaded reads are saved to <b>{kit ? kit.kit_code : "this kit"}</b> and replace any previous ones.</p>
             </>
           ) : (
             <>

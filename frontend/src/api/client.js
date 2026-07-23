@@ -81,6 +81,9 @@ export const api = {
   deleteKit: (id) => request(`/kits/${id}`, { method: "DELETE" }),
   getTagLayout: () => request("/kits/tag-layout"),
   downloadKitTemplate: (id, filename) => downloadBlob(`/kits/${id}/control-template.xlsx`, filename),
+  getKitReads: (id) => request(`/kits/${id}/reads`),
+  setKitReads: (id, body) => request(`/kits/${id}/reads`, { method: "PUT", body }),
+  deleteKitReads: (id) => request(`/kits/${id}/reads`, { method: "DELETE" }),
 
   // control-position templates (admin)
   listControlTemplates: () => request("/control-templates"),
@@ -185,8 +188,8 @@ export const api = {
     request(`/populations/${populationId}/matching-settings`, { method: "PUT", body }),
 
   // uploads
-  initUpload: (filename, size, purpose) =>
-    request("/jobs/uploads", { method: "POST", body: { filename, size, purpose } }),
+  initUpload: (filename, size, purpose, kitId) =>
+    request("/jobs/uploads", { method: "POST", body: { filename, size, purpose, kit_id: kitId ?? null } }),
   completeUpload: (key, uploadId, parts) =>
     request("/jobs/uploads/complete", {
       method: "POST",
@@ -220,8 +223,8 @@ export async function downloadExport(projectId, kind) {
 
 // Upload a File directly to S3. Returns the object key to reference in the job.
 // onProgress(fraction) is called 0..1. Requires the bucket's CORS to expose ETag.
-export async function uploadFile(file, purpose, onProgress = () => {}) {
-  const init = await api.initUpload(file.name, file.size, purpose);
+export async function uploadFile(file, purpose, onProgress = () => {}, kitId = null) {
+  const init = await api.initUpload(file.name, file.size, purpose, kitId);
   if (init.method === "put") {
     await putWithProgress(init.put_url, file, onProgress);
     return init.key;

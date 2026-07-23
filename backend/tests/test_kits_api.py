@@ -120,6 +120,31 @@ def test_unknown_tag_columns_rejected(client, catalog, admin_token):
     assert r.status_code == 422 and "PP99" in r.text
 
 
+def test_kit_reads_crud(client, catalog, admin_token, user_token, monkeypatch):
+    monkeypatch.setattr("app.api.kits.storage.object_exists", lambda key: True)
+    tok_a = register(client, "a@x.com")
+    tok_b = register(client, "b@x.com")
+    kit_id = _register_kit(client, admin_token, [user_id("a@x.com")]).json()["id"]
+    k1 = f"reads/kit/{kit_id}/u/reads_1.fastq.gz"
+    k2 = f"reads/kit/{kit_id}/u/reads_2.fastq.gz"
+    body = {"fastq1_key": k1, "fastq2_key": k2, "fastq1_name": "r1", "fastq2_name": "r2",
+            "size1": 10, "size2": 20}
+
+    # assigned user can register; outsider cannot
+    assert client.put(f"/api/kits/{kit_id}/reads", json=body, headers=bearer(tok_b)).status_code == 403
+    r = client.put(f"/api/kits/{kit_id}/reads", json=body, headers=bearer(tok_a))
+    assert r.status_code == 200 and r.json()["fastq1_key"] == k1
+    assert client.get(f"/api/kits/{kit_id}/reads", headers=bearer(tok_a)).json()["fastq2_name"] == "r2"
+
+    # keys outside the kit's prefix are rejected
+    bad = {**body, "fastq1_key": "uploads/9/x/evil.gz"}
+    assert client.put(f"/api/kits/{kit_id}/reads", json=bad, headers=bearer(tok_a)).status_code == 422
+
+    # delete clears it
+    assert client.delete(f"/api/kits/{kit_id}/reads", headers=bearer(tok_a)).status_code == 204
+    assert client.get(f"/api/kits/{kit_id}/reads", headers=bearer(tok_a)).json() is None
+
+
 def test_access_control(client, catalog, admin_token):
     tok_a = register(client, "a@x.com")
     tok_b = register(client, "b@x.com")

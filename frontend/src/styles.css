@@ -269,6 +269,10 @@ button.danger:disabled { opacity: .45; cursor: not-allowed; }
 .kit-jobs th, .kit-jobs td { padding: .3rem .5rem; }
 .kit-jobs td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
 .kit-nojobs { margin: .5rem 0 0; }
+.kit-reads { margin: .3rem 0 .2rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.reads-form { flex-basis: 100%; margin-top: .3rem; padding: .5rem .7rem; border: 1px solid var(--line);
+  border-radius: 7px; background: var(--card); display: flex; flex-direction: column; gap: .3rem; }
+.server-reads p { margin: .15rem 0; }
 .kit-chips { display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap; margin-left: auto; }
 .kit-chips .chip { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .5rem;
   font-size: .78rem; background: #eef2ff; color: var(--brand); border-color: #dbe2fe; }

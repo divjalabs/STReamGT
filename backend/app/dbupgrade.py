@@ -34,6 +34,19 @@ DDL = [
         created_at timestamptz NOT NULL DEFAULT now(),
         positions json NOT NULL DEFAULT '[]'::json
     )""",
+    # 0007 — per-kit server-side FASTQ reads
+    """CREATE TABLE IF NOT EXISTS kit_reads (
+        id serial PRIMARY KEY,
+        kit_id integer NOT NULL UNIQUE REFERENCES kits(id) ON DELETE CASCADE,
+        fastq1_key varchar(512) NOT NULL,
+        fastq2_key varchar(512) NOT NULL,
+        fastq1_name varchar(255),
+        fastq2_name varchar(255),
+        size1 integer,
+        size2 integer,
+        uploaded_by integer REFERENCES users(id),
+        uploaded_at timestamptz NOT NULL DEFAULT now()
+    )""",
 ]
 
 
