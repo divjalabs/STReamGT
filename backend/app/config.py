@@ -1,6 +1,7 @@
 """Application configuration, loaded from environment variables / .env."""
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,10 +27,12 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
 
     # --- Database ---
-    # Either set database_url directly (local/dev), or provide db_host + db_password
-    # (cloud: password injected from Secrets Manager, host from Aurora) and let
-    # resolved_database_url assemble the URL — keeps the password out of IaC state/env files.
+    # Either set database_url directly (local/dev; cloud: the full Neon URL from Parameter Store),
+    # or provide db_host + db_password and let resolved_database_url assemble the URL.
     database_url: str = "postgresql+psycopg://streamgt:streamgt@localhost:5432/streamgt"
+    # Open a fresh connection per session instead of pooling. Cloud: idle pooled connections
+    # keep a scale-to-zero Postgres awake (and a frozen Lambda can't close them).
+    db_null_pool: bool = False
     db_host: str | None = None
     db_port: int = 5432
     db_user: str = "streamgt"
@@ -100,8 +103,24 @@ class Settings(BaseSettings):
         return self.celery_result_backend or self.redis_url
 
 
+def _load_ssm_parameters() -> None:
+    """Cloud (Lambda): export every parameter under SSM_PARAMETER_PATH (e.g. /streamgt/) as an env
+    var named by its last path segment, e.g. /streamgt/SECRET_KEY -> SECRET_KEY. Explicit env vars
+    win. ECS tasks get the same parameters injected natively via the task definition instead."""
+    path = os.environ.get("SSM_PARAMETER_PATH")
+    if not path:
+        return
+    import boto3
+
+    ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "eu-central-1"))
+    for page in ssm.get_paginator("get_parameters_by_path").paginate(Path=path, WithDecryption=True):
+        for p in page["Parameters"]:
+            os.environ.setdefault(p["Name"].rsplit("/", 1)[-1], p["Value"])
+
+
 @lru_cache
 def get_settings() -> Settings:
+    _load_ssm_parameters()
     return Settings()
 
 

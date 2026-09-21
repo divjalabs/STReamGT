@@ -5,10 +5,14 @@ from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
-engine = create_engine(settings.resolved_database_url, pool_pre_ping=True, future=True)
+engine = create_engine(
+    settings.resolved_database_url, pool_pre_ping=True, future=True,
+    **({"poolclass": NullPool} if settings.db_null_pool else {}),
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
