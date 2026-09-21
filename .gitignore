@@ -51,3 +51,6 @@ test_data/
 *.sqlite3
 
 # Note: pipeline/tests/ IS tracked (holds fixtures like input.example.tsv)
+
+# Local off-AWS backups (DB dumps + data) — never commit
+streamgt-backup/

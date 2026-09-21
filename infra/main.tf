@@ -13,39 +13,47 @@ locals {
   head_task_family = "${var.project}-head"
   nxf_work         = "s3://${var.data_bucket}/work"
 
-  # Env shared by both the API and head tasks.
-  common_env = [
-    { name = "ENVIRONMENT", value = "production" },
-    { name = "S3_BUCKET", value = var.data_bucket },
-    { name = "S3_REGION", value = var.region },
-    { name = "AWS_REGION", value = var.region },
-    { name = "DB_HOST", value = var.db_endpoint },
-    { name = "DB_USER", value = var.db_user },
-    { name = "DB_NAME", value = var.db_name },
-    { name = "EMAIL_FROM", value = var.email_from },
-    { name = "SMTP_HOST", value = "email-smtp.${var.region}.amazonaws.com" },
-    { name = "SMTP_PORT", value = "587" },
-    { name = "SMTP_USE_TLS", value = "true" },
-    { name = "FRONTEND_BASE_URL", value = "https://${aws_cloudfront_distribution.app.domain_name}" },
-  ]
+  # Secrets live in SSM Parameter Store (SecureString, free standard tier) under /<project>/,
+  # created by hand (see README) so their values never enter Terraform state. The parameter name
+  # is the env var name: /streamgt/SECRET_KEY -> SECRET_KEY.
+  ssm_path           = "/${var.project}"
+  ssm_arn_prefix     = "arn:aws:ssm:${var.region}:${var.account_id}:parameter${local.ssm_path}"
+  secret_param_names = ["SECRET_KEY", "DATABASE_URL", "SMTP_USER", "SMTP_PASSWORD"]
 
-  common_secrets = [
-    { name = "SECRET_KEY", valueFrom = data.aws_secretsmanager_secret.app_secret.arn },
-    { name = "DB_PASSWORD", valueFrom = data.aws_secretsmanager_secret.db_password.arn },
-  ]
+  # Env shared by the API (Lambda) and the head task. DATABASE_URL (Neon) comes from SSM.
+  common_env = {
+    ENVIRONMENT       = "production"
+    S3_BUCKET         = var.data_bucket
+    S3_REGION         = var.region
+    DB_NULL_POOL      = "true" # never hold idle connections: lets Neon scale to zero
+    EMAIL_FROM        = var.email_from
+    SMTP_HOST         = "email-smtp.${var.region}.amazonaws.com"
+    SMTP_PORT         = "587"
+    SMTP_USE_TLS      = "true"
+    FRONTEND_BASE_URL = var.frontend_base_url # a var: CloudFront -> Lambda URL -> env would cycle
+  }
+
+  head_secrets = [for n in local.secret_param_names : { name = n, valueFrom = "${local.ssm_arn_prefix}/${n}" }]
 }
 
 # ---------- data: existing resources ----------
 data "aws_iam_role" "exec" { name = var.exec_role_name }
-data "aws_iam_role" "api" { name = var.api_role_name }
 data "aws_iam_role" "head" { name = var.head_role_name }
-data "aws_secretsmanager_secret" "app_secret" { name = "${var.project}/app-secret-key" }
-data "aws_secretsmanager_secret" "db_password" { name = "${var.project}/db-password" }
 data "aws_s3_bucket" "site" { bucket = var.site_bucket }
+
+# The (hand-made) ECS execution role injects the head task's secrets from SSM.
+resource "aws_iam_role_policy" "exec_ssm" {
+  name = "ssm-params"
+  role = data.aws_iam_role.exec.name
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [{ Effect = "Allow", Action = ["ssm:GetParameters"], Resource = "${local.ssm_arn_prefix}/*" }]
+  })
+}
 
 # ---------- logs ----------
 resource "aws_cloudwatch_log_group" "api" {
-  name              = "/ecs/${var.project}-api"
+  name              = "/aws/lambda/${var.project}-api"
   retention_in_days = 30
 }
 resource "aws_cloudwatch_log_group" "head" {
@@ -56,41 +64,6 @@ resource "aws_cloudwatch_log_group" "head" {
 # ---------- ECS cluster ----------
 resource "aws_ecs_cluster" "main" {
   name = var.project
-}
-
-# ---------- task definition: API (always-on service) ----------
-resource "aws_ecs_task_definition" "api" {
-  family                   = "${var.project}-api"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = var.api_cpu
-  memory                   = var.api_memory
-  execution_role_arn       = data.aws_iam_role.exec.arn
-  task_role_arn            = data.aws_iam_role.api.arn
-
-  container_definitions = jsonencode([{
-    name         = "api"
-    image        = var.backend_image
-    essential    = true
-    command      = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-    portMappings = [{ containerPort = 8000 }]
-    environment = concat(local.common_env, [
-      { name = "RUN_MODE", value = "ecs" },
-      { name = "ECS_CLUSTER", value = aws_ecs_cluster.main.name },
-      { name = "HEAD_TASK_DEF", value = local.head_task_family },
-      { name = "ECS_SUBNETS", value = join(",", var.subnets) },
-      { name = "ECS_SECURITY_GROUP", value = var.api_sg },
-    ])
-    secrets = local.common_secrets
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.api.name
-        "awslogs-region"        = var.region
-        "awslogs-stream-prefix" = "api"
-      }
-    }
-  }])
 }
 
 # ---------- task definition: head (one-off per job, launched by the API) ----------
@@ -112,12 +85,13 @@ resource "aws_ecs_task_definition" "head" {
     # local_fargate: the head task runs the whole pipeline itself (Nextflow local executor,
     # OBITools baked into the image). The awsbatch-only vars (NXF_BATCH_QUEUE/OBITOOLS_IMAGE/
     # NXF_WORK) are intentionally absent — tasks.py only reads them when profile == awsbatch.
-    environment = concat(local.common_env, [
-      { name = "NEXTFLOW_PROFILE", value = "local_fargate" },
-      { name = "PIPELINE_DIR", value = "/app/pipeline" },
-      { name = "JOB_SCRATCH_ROOT", value = "/scratch" },
-    ])
-    secrets = local.common_secrets
+    environment = [for k, v in merge(local.common_env, {
+      AWS_REGION       = var.region
+      NEXTFLOW_PROFILE = "local_fargate"
+      PIPELINE_DIR     = "/app/pipeline"
+      JOB_SCRATCH_ROOT = "/scratch"
+    }) : { name = k, value = v }]
+    secrets = local.head_secrets
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -129,60 +103,94 @@ resource "aws_ecs_task_definition" "head" {
   }])
 }
 
-# ---------- ALB (HTTP origin behind CloudFront) ----------
-resource "aws_lb" "api" {
-  name               = "${var.project}-alb"
-  load_balancer_type = "application"
-  subnets            = var.subnets
-  security_groups    = [var.alb_sg]
+# ---------- API: Lambda (container image + Lambda Web Adapter) behind a function URL ----------
+# Pay-per-request: no always-on compute, no load balancer, no public IPv4. Runs outside the VPC,
+# so it reaches Neon, ECS RunTask and SES SMTP over the internet with no NAT/endpoints.
+resource "aws_iam_role" "lambda_api" {
+  name = "${var.project}-lambda-api"
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }]
+  })
 }
 
-resource "aws_lb_target_group" "api" {
-  name        = "${var.project}-api"
-  port        = 8000
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-  target_type = "ip"
-  health_check {
-    path                = "/health"
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-    interval            = 15
-  }
+resource "aws_iam_role_policy_attachment" "lambda_api_logs" {
+  role       = aws_iam_role.lambda_api.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.api.arn
-  port              = 80
-  protocol          = "HTTP"
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.api.arn
-  }
+resource "aws_iam_role_policy" "lambda_api" {
+  name = "api"
+  role = aws_iam_role.lambda_api.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { # presigned FASTQ uploads + result downloads
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"]
+        Resource = "arn:aws:s3:::${var.data_bucket}/*"
+      },
+      { Effect = "Allow", Action = ["s3:ListBucket"], Resource = "arn:aws:s3:::${var.data_bucket}" },
+      { # launch the per-job head task
+        Effect   = "Allow"
+        Action   = ["ecs:RunTask"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = [data.aws_iam_role.head.arn, data.aws_iam_role.exec.arn]
+      },
+      { # secrets, loaded at cold start (app.config._load_ssm_parameters)
+        Effect   = "Allow"
+        Action   = ["ssm:GetParametersByPath"]
+        Resource = [local.ssm_arn_prefix, "${local.ssm_arn_prefix}/*"]
+      },
+    ]
+  })
 }
 
-# ---------- ECS service (API) ----------
-resource "aws_ecs_service" "api" {
-  name            = "${var.project}-api"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.api.arn
-  desired_count   = 1
-  launch_type     = "FARGATE"
+resource "aws_lambda_function" "api" {
+  function_name = "${var.project}-api"
+  role          = aws_iam_role.lambda_api.arn
+  package_type  = "Image"
+  image_uri     = var.api_lambda_image
+  architectures = ["arm64"]
+  memory_size   = var.api_lambda_memory
+  timeout       = 60
 
-  network_configuration {
-    subnets          = var.subnets
-    security_groups  = [var.api_sg]
-    assign_public_ip = true
+  environment {
+    variables = merge(local.common_env, {
+      SSM_PARAMETER_PATH = "${local.ssm_path}/"
+      RUN_MODE           = "ecs"
+      ECS_CLUSTER        = aws_ecs_cluster.main.name
+      HEAD_TASK_DEF      = local.head_task_family
+      ECS_SUBNETS        = join(",", var.subnets)
+      ECS_SECURITY_GROUP = var.head_sg
+    })
   }
-  load_balancer {
-    target_group_arn = aws_lb_target_group.api.arn
-    container_name   = "api"
-    container_port   = 8000
-  }
-  depends_on = [aws_lb_listener.http]
+
+  depends_on = [aws_cloudwatch_log_group.api, aws_iam_role_policy_attachment.lambda_api_logs]
+
+  # New images roll out with `aws lambda update-function-code` (see README), not Terraform.
+  lifecycle { ignore_changes = [image_uri] }
 }
 
-# ---------- CloudFront (SPA + /api/* -> ALB), no custom domain ----------
+# Public URL; CloudFront is the only intended caller (the app does its own JWT auth).
+resource "aws_lambda_function_url" "api" {
+  function_name      = aws_lambda_function.api.function_name
+  authorization_type = "NONE"
+}
+
+resource "aws_lambda_permission" "api_url" {
+  statement_id           = "FunctionURLAllowPublicAccess"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.api.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
+# ---------- CloudFront (SPA + /api/* -> Lambda function URL), no custom domain ----------
 resource "aws_cloudfront_origin_access_control" "site" {
   name                              = "${var.project}-site-oac"
   origin_access_control_origin_type = "s3"
@@ -200,12 +208,12 @@ resource "aws_cloudfront_distribution" "app" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
   origin {
-    origin_id   = "alb-api"
-    domain_name = aws_lb.api.dns_name
+    origin_id   = "lambda-api"
+    domain_name = split("/", aws_lambda_function_url.api.function_url)[2] # https://<id>.lambda-url...on.aws/
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "http-only"
+      origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
@@ -220,12 +228,12 @@ resource "aws_cloudfront_distribution" "app" {
 
   ordered_cache_behavior {
     path_pattern             = "/api/*"
-    target_origin_id         = "alb-api"
+    target_origin_id         = "lambda-api"
     viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods           = ["GET", "HEAD"]
     cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
-    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader (function URLs need their own Host)
   }
 
   # SPA routing: send 403/404 to index.html
