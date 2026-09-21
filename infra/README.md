@@ -45,6 +45,14 @@ terraform apply
 terraform output app_url
 ```
 
+**One manual step after the first apply** — public function URLs also need an
+`lambda:InvokeFunction` grant limited to URL calls, which the pinned AWS provider (5.x) can't
+express (without it the URL answers 403 Forbidden):
+```bash
+aws lambda add-permission --function-name streamgt-api --statement-id FunctionURLInvokeAllowPublicAccess \
+  --action lambda:InvokeFunction --principal '*' --invoked-via-function-url
+```
+
 ## Rolling out a new API image
 Terraform ignores `image_uri` after creation; push the image, then:
 ```bash

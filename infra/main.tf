@@ -182,6 +182,11 @@ resource "aws_lambda_function_url" "api" {
   authorization_type = "NONE"
 }
 
+# AWS also requires lambda:InvokeFunction (condition lambda:InvokedViaFunctionUrl=true) for public
+# URLs. The pinned provider (5.x) can't express that condition, so it was added by hand (README):
+#   aws lambda add-permission --function-name streamgt-api --statement-id \
+#     FunctionURLInvokeAllowPublicAccess --action lambda:InvokeFunction --principal '*' \
+#     --invoked-via-function-url
 resource "aws_lambda_permission" "api_url" {
   statement_id           = "FunctionURLAllowPublicAccess"
   action                 = "lambda:InvokeFunctionUrl"
