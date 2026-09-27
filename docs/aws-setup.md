@@ -1,5 +1,12 @@
 # STReamGT — AWS Infrastructure Setup (cloud-native: Fargate + Batch + Aurora)
 
+> **HISTORICAL (2026-07).** Records how the account was originally built by hand. Three parts are
+> no longer true: **AWS Batch** was abandoned (the pipeline runs entirely inside one Fargate head
+> task), **Aurora** was replaced by **Neon** and deleted, and the **ALB + always-on ECS API
+> service** were replaced by a **Lambda** behind CloudFront. Secrets moved from Secrets Manager to
+> SSM Parameter Store. Still useful for the VPC/S3/IAM/ECR groundwork, which is unchanged.
+> Current architecture: [aws-101.md](aws-101.md) · deploy: [../infra/README.md](../infra/README.md).
+
 Step-by-step to provision the **cloud-native, pay-per-use** topology:
 
 ```

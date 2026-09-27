@@ -1,5 +1,9 @@
 # STReamGT Web Platform — Architecture & Build Plan
 
+> **Design document (2026-06).** The application design below still holds; the *deployment*
+> section predates the September 2026 move to Lambda + Neon. For how the deployed system is wired
+> today, see [aws-101.md](aws-101.md).
+
 ## Context
 
 `STReamGT` is a working Nextflow DSL2 pipeline that genotypes STR/SNP markers from

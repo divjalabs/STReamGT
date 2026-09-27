@@ -42,9 +42,11 @@ nextflow run main.nf --input tests/input.example.tsv -profile docker
 The web app is a thin **input assembler + job runner + result harvester** around
 `nextflow run`. Admins register **kits** (primers, PP1–PP8 tag columns, controls, species)
 once. Users pick a kit, upload one FASTQ pair (direct-to-S3 multipart), add one or more
-sample batches (sample sheet + tag selection), and submit. A Celery worker builds
-`input.tsv`, runs Nextflow on the VM (`-profile docker`), renders the R report, uploads
-results to S3, and emails the user. See [docs/architecture.md](docs/architecture.md).
+sample batches (sample sheet + tag selection), and submit. A job runner builds `input.tsv`,
+runs Nextflow, renders the report, uploads results to S3, and emails the user. Two dispatch
+modes: locally a **Celery worker** runs Nextflow with `-profile docker`; in the cloud the API
+launches **one Fargate task per job** that runs the whole pipeline with `-profile local_fargate`.
+See [docs/architecture.md](docs/architecture.md).
 
 New to the cloud side? [docs/aws-101.md](docs/aws-101.md) explains, in plain language, what the
 deployed app runs on (CloudFront, Lambda, S3, ECS/Fargate, Neon) and what each piece costs.

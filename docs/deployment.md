@@ -1,5 +1,10 @@
 # STReamGT — Production Deployment Plan (AWS, single VM)
 
+> **HISTORICAL (2026-07).** This single-EC2-VM plan was never the shipped design and does not
+> describe what runs today. The app now runs serverless: CloudFront → Lambda (API) → Neon, with
+> one Fargate task per genotyping job. See [aws-101.md](aws-101.md) for the current architecture
+> and [../infra/README.md](../infra/README.md) for the deploy commands. Kept for context.
+
 This is the step-by-step plan to take STReamGT from the local dev setup to a running
 production service on AWS: one Docker host (EC2) running the web app + Celery worker +
 Nextflow, **S3** for storage, **SES** for email, optional **RDS** for Postgres.
