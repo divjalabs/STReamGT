@@ -13,7 +13,7 @@ STReamGT/
 ├── backend/      FastAPI + Celery worker + SQLAlchemy models (users, kits, jobs)
 ├── frontend/     React (Vite) web UI (auth, submit wizard, job tracking)
 ├── deploy/       docker-compose + Caddy for a single-VM deployment
-└── docs/         architecture.md, kit-onboarding.md
+└── docs/         architecture.md, aws-101.md, kit-onboarding.md
 ```
 
 ## The pipeline in one paragraph
@@ -45,6 +45,9 @@ once. Users pick a kit, upload one FASTQ pair (direct-to-S3 multipart), add one 
 sample batches (sample sheet + tag selection), and submit. A Celery worker builds
 `input.tsv`, runs Nextflow on the VM (`-profile docker`), renders the R report, uploads
 results to S3, and emails the user. See [docs/architecture.md](docs/architecture.md).
+
+New to the cloud side? [docs/aws-101.md](docs/aws-101.md) explains, in plain language, what the
+deployed app runs on (CloudFront, Lambda, S3, ECS/Fargate, Neon) and what each piece costs.
 
 ## Development
 
