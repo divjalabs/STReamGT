@@ -299,6 +299,10 @@ export default function JobDetail() {
                   This kit is locked as analysed. Explain why it should be re-run — an admin will
                   be notified.
                 </p>
+                <p className="muted small">
+                  ⚠️ Reanalysis re-runs this kit and <b>replaces</b> its previous samples and results in
+                  the project — they aren't duplicated. Locked genotypes are kept; re-run matching afterward.
+                </p>
                 <textarea
                   rows={4}
                   value={reason}

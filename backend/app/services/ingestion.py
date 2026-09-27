@@ -108,7 +108,8 @@ def ingest_parsed(
     # Consensus output names alleles; map name -> sequence-backed allele id (unique within a run).
     id_by_name = {(marker, r.allele_name): r.id for (marker, _seq), r in ref_row_by_seq.items()}
 
-    # 2) Samples: find-or-create by (job_id, name). Collect the ids we touch this run.
+    # 2) Samples: find-or-create by (project, kit, name) so a reanalysis of the same kit updates the
+    #    SAME specimen rows in place instead of duplicating them. Collect the ids we touch this run.
     control_kinds = _control_kind_map(db, job, positions)
     sample_ids: dict[str, int] = {}
     names = {r.sample_name for r in consensus} | {g.sample_name for g in genotypes} \
@@ -116,7 +117,8 @@ def ingest_parsed(
     for name in names:
         ckind = control_kinds.get(name)
         sample = db.scalar(
-            select(Sample).where(Sample.job_id == job.id, Sample.name == name)
+            select(Sample).where(
+                Sample.project_id == project_id, Sample.kit_id == job.kit_id, Sample.name == name)
         )
         if sample is None:
             sample = Sample(
@@ -135,6 +137,7 @@ def ingest_parsed(
             db.flush()
             sample.system_code = f"S-{sample.id:06d}"
         else:
+            sample.job_id = job.id                  # point the specimen at the latest run
             sample.is_control = ckind is not None   # re-flag on re-ingest
             sample.control_type = ckind
         sample_ids[name] = sample.id
