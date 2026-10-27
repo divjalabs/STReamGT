@@ -135,15 +135,30 @@ def execute_job(job_id: int) -> str:
     if job is None:
         return "job-not-found"
     kit = job.kit
-    scratch = os.path.join(settings.job_scratch_root, job.public_id)
+    public_id = job.public_id                       # plain values survive a closed session
+    kit_code = kit.kit_code
+    scratch = os.path.join(settings.job_scratch_root, public_id)
     inputs_dir = os.path.join(scratch, "inputs")
     log_path = os.path.join(scratch, "run.log")
+    final_status = None
 
     def set_status(status: JobStatus, **fields) -> None:
-        job.status = status
-        for k, v in fields.items():
-            setattr(job, k, v)
-        db.commit()
+        """Write the status in its own short-lived session.
+
+        The pipeline runs for tens of minutes between updates. Holding one session open across
+        that leaves an idle transaction, which Postgres (Neon in particular) terminates — and the
+        failure then surfaced on the *next* status write, after the work was already done.
+        """
+        nonlocal final_status
+        with SessionLocal() as s:
+            j = s.get(Job, job_id)
+            j.status = status
+            for k, v in fields.items():
+                setattr(j, k, v)
+            s.commit()
+        final_status = status
+        if job in db:                               # keep the in-memory copy in step
+            db.expire(job)
 
     try:
         os.makedirs(inputs_dir, exist_ok=True)
@@ -195,6 +210,9 @@ def execute_job(job_id: int) -> str:
         #    process generates the HTML reports, so no separate render step here).
         set_status(JobStatus.running)
         _prepare_awsbatch_env()  # no-op unless nextflow_profile == "awsbatch"
+        # Nothing touches the database until the run finishes, so don't sit on a connection for
+        # the duration — the server would close it under us.
+        db.close()
         _run(
             pr.build_nextflow_cmd(
                 pipeline_dir=settings.pipeline_dir, input_tsv=input_tsv, run_dir=scratch,
@@ -206,13 +224,18 @@ def execute_job(job_id: int) -> str:
             cwd=scratch, log_path=log_path,
         )
 
-        results = pr.collect_results(scratch, kit.kit_code)
+        # Fresh session for the post-run work; the pre-run one was released above.
+        db = SessionLocal()
+        job = db.get(Job, job_id)
+        kit = job.kit
+
+        results = pr.collect_results(scratch, kit_code)
         if not results:
             raise RuntimeError("pipeline produced no result files")
 
         # 4. Upload results to S3 and record them (HTML reports are collected by suffix).
         set_status(JobStatus.uploading)
-        prefix = job.storage_prefix or f"results/{kit.kit_code}/{job.public_id}"
+        prefix = job.storage_prefix or f"results/{kit_code}/{public_id}"
         for r in results:
             key = f"{prefix}/{r.filename}"
             storage.upload_file(r.path, key)
@@ -239,30 +262,50 @@ def execute_job(job_id: int) -> str:
                 log.exception("ingestion failed for job %s: %s", job.public_id, ing_exc)
 
         kit.status = KitStatus.analysed  # a successful job marks the kit analysed
+        user_email = job.user.email
+        db.commit()
         set_status(JobStatus.succeeded, finished_at=_now())
-        _safe_notify(notify.send_job_succeeded, job.user.email, kit.kit_code, job.public_id)
+        _safe_notify(notify.send_job_succeeded, user_email, kit_code, public_id)
         return "succeeded"
 
     except Exception as exc:  # noqa: BLE001 — record any failure on the job
-        set_status(JobStatus.failed, finished_at=_now(), error_message=str(exc)[:4000])
-        _safe_notify(notify.send_job_failed, job.user.email, kit.kit_code, job.public_id, str(exc)[:500])
+        # The session may itself be the casualty (a dropped connection); set_status opens its own,
+        # and _recipient_email re-reads through a fresh one, so the failure is always recorded.
+        log.exception("job %s failed", public_id)
+        try:
+            set_status(JobStatus.failed, finished_at=_now(), error_message=str(exc)[:4000])
+        except Exception:  # noqa: BLE001
+            log.exception("could not record the failure on job %s", public_id)
+        _safe_notify(notify.send_job_failed, _recipient_email(job_id), kit_code, public_id,
+                     str(exc)[:500])
         return "failed"
     finally:
         # Preserve the logs before the scratch dir goes away. Best-effort on both paths: this is
         # diagnostics, and failing here must not change the job's outcome.
         try:
-            prefix = job.storage_prefix or f"results/{kit.kit_code}/{job.public_id}"
-            archive = pr.archive_logs(scratch, kit.kit_code, os.path.join(scratch, "logs.tar.gz"))
+            archive = pr.archive_logs(scratch, kit_code, os.path.join(scratch, "logs.tar.gz"))
             if archive:
-                storage.upload_file(archive, f"{prefix}/logs.tar.gz")
-                log.info("pipeline logs archived to %s/logs.tar.gz", prefix)
+                storage.upload_file(archive, f"results/{kit_code}/{public_id}/logs.tar.gz")
+                log.info("pipeline logs archived for job %s", public_id)
         except Exception:  # noqa: BLE001
-            log.exception("could not archive pipeline logs for job %s", job.public_id)
+            log.exception("could not archive pipeline logs for job %s", public_id)
 
         db.close()
-        # Keep scratch on failure for debugging; clean on success.
-        if job.status == JobStatus.succeeded:
+        # Keep scratch on failure for debugging; clean on success. Read the status we wrote, not
+        # the ORM object — its session is gone by now.
+        if final_status == JobStatus.succeeded:
             shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _recipient_email(job_id: int) -> str | None:
+    """Who to tell about this job, read through a session of its own — the caller's may be dead."""
+    try:
+        with SessionLocal() as s:
+            job = s.get(Job, job_id)
+            return job.user.email if job else None
+    except Exception:  # noqa: BLE001
+        log.exception("could not look up the recipient for job %s", job_id)
+        return None
 
 
 def _safe_notify(fn, *args) -> None:
