@@ -342,7 +342,10 @@ def update_kit(
     if current.is_admin:
         if payload.status is not None:
             kit.status = payload.status
-        if payload.description is not None:
+        # Only touch the description when the caller actually sent the field: a PATCH that omits
+        # it must leave it alone (the admin UI once sent description="" with every status change
+        # and silently wiped it), while an explicit "" still clears it.
+        if "description" in payload.model_fields_set:
             kit.description = payload.description
         if payload.assigned_user_ids is not None:
             kit.users = list(

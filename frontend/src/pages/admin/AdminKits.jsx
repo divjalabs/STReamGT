@@ -16,7 +16,7 @@ export default function AdminKits() {
 
   // row editing
   const [editId, setEditId] = useState(null);
-  const [edit, setEdit] = useState({ status: "sent", description: "", assigned_user_ids: [] });
+  const [edit, setEdit] = useState({ status: "sent", assigned_user_ids: [] });
 
   const load = () => api.listKits().then(setKits).catch((e) => setErr(e.message));
   useEffect(() => {
@@ -33,7 +33,8 @@ export default function AdminKits() {
 
   const startEdit = (k) => {
     setEditId(k.id);
-    setEdit({ status: k.status, description: "", assigned_user_ids: [...k.assigned_user_ids] });
+    // Don't send `description` at all — this form doesn't edit it, and sending "" wiped it.
+    setEdit({ status: k.status, assigned_user_ids: [...k.assigned_user_ids] });
   };
   const saveEdit = async (id) => {
     try { await api.updateKit(id, edit); setEditId(null); load(); } catch (e) { setErr(e.message); }
@@ -105,7 +106,10 @@ export default function AdminKits() {
             </tr>
           ) : (
             <tr key={k.id}>
-              <td>{k.kit_code}</td>
+              <td>
+                {k.kit_code}
+                {k.description && <div className="muted small">{k.description}</div>}
+              </td>
               <td>{k.species || "—"}</td>
               <td className="muted">{k.tag_columns.map((t) => t.name).join(", ")}</td>
               <td className="muted">{k.assigned_user_ids.map(emailFor).join(", ") || "—"}</td>

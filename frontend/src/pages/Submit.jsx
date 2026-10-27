@@ -34,11 +34,16 @@ export default function Submit() {
   const [err, setErr] = useState(null);
   const [paramDefaults, setParamDefaults] = useState(null);
   const [params, setParams] = useState({});
+  const [paramsErr, setParamsErr] = useState(null);  // defaults unreadable -> say so, don't hide
+  const [jobsErr, setJobsErr] = useState(null);      // can't tell whether a run is already going
 
   useEffect(() => {
     api.listKits().then(setKits).catch((e) => setErr(e.message));
-    api.listJobs().then(setJobs).catch(() => {});
-    api.getParameterDefaults().then((d) => { setParamDefaults(d); setParams(d); }).catch(() => {});
+    // A failure here silently re-enabled submitting while another run was in flight.
+    api.listJobs().then(setJobs).catch((e) => setJobsErr(e.message));
+    api.getParameterDefaults()
+      .then((d) => { setParamDefaults(d); setParams(d); })
+      .catch((e) => setParamsErr(e.message));
   }, []);
 
   const kit = kits.find((k) => String(k.id) === String(kitId));
@@ -353,6 +358,19 @@ export default function Submit() {
         })}
 
         <button type="button" className="secondary" onClick={() => setBatches((bs) => [...bs, newBatch()])}>+ add another sample batch</button>
+
+        {paramsErr && (
+          <p className="error">
+            Could not load the allele-calling parameters: {paramsErr}. The analysis will use the
+            pipeline's built-in defaults, and they can't be adjusted here right now.
+          </p>
+        )}
+        {jobsErr && (
+          <p className="muted small">
+            ⚠️ Could not check whether this kit already has an analysis running ({jobsErr}). If one
+            is, submitting again will be refused.
+          </p>
+        )}
 
         {paramDefaults && (
           <details className="card">

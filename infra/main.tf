@@ -196,6 +196,25 @@ resource "aws_lambda_permission" "api_url" {
 }
 
 # ---------- CloudFront (SPA + /api/* -> Lambda function URL), no custom domain ----------
+# Serves index.html for SPA routes (/projects, /jobs/<id>, …) without touching API responses:
+# anything with a file extension, or under /api/, is passed through untouched.
+resource "aws_cloudfront_function" "spa_router" {
+  name    = "${var.project}-spa-router"
+  runtime = "cloudfront-js-2.0"
+  comment = "Rewrite extensionless paths to /index.html (SPA deep links)"
+  publish = true
+  code    = <<-JS
+    function handler(event) {
+      var request = event.request;
+      var uri = request.uri;
+      if (uri.startsWith('/api/')) return request;
+      var lastSegment = uri.substring(uri.lastIndexOf('/') + 1);
+      if (lastSegment.indexOf('.') === -1) request.uri = '/index.html';
+      return request;
+    }
+  JS
+}
+
 resource "aws_cloudfront_origin_access_control" "site" {
   name                              = "${var.project}-site-oac"
   origin_access_control_origin_type = "s3"
@@ -220,6 +239,8 @@ resource "aws_cloudfront_distribution" "app" {
       https_port             = 443
       origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
+      # Match the Lambda's own 60s timeout; the 30s default cut long requests short with a 504.
+      origin_read_timeout = 60
     }
   }
 
@@ -229,6 +250,12 @@ resource "aws_cloudfront_distribution" "app" {
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
     cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+
+    # SPA routing happens HERE, on the site behaviour only — never on /api/*.
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_router.arn
+    }
   }
 
   ordered_cache_behavior {
@@ -241,17 +268,10 @@ resource "aws_cloudfront_distribution" "app" {
     origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader (function URLs need their own Host)
   }
 
-  # SPA routing: send 403/404 to index.html
-  custom_error_response {
-    error_code         = 403
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-  custom_error_response {
-    error_code         = 404
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
+  # NOTE: deliberately no `custom_error_response` blocks. They apply to the WHOLE distribution,
+  # including /api/*, so they rewrote every API 403/404 into "200 + index.html": failed downloads
+  # were saved as .csv files full of HTML, and real errors surfaced as JSON parse failures.
+  # SPA routing is handled by the viewer-request function on the site behaviour instead.
 
   restrictions {
     geo_restriction { restriction_type = "none" }

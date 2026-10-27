@@ -256,3 +256,31 @@ def test_delete_analysed_kit_blocked(client, catalog, admin_token):
     assert "analysed" in r.json()["detail"]
     # kit still there
     assert client.get(f"/api/kits/{kit_id}", headers=bearer(admin_token)).status_code == 200
+
+
+def test_patching_status_keeps_the_description(client, catalog, admin_token):
+    """A PATCH that doesn't mention the description must leave it alone.
+
+    The admin UI used to send description="" with every status/assignee change, silently wiping
+    a field it never displayed.
+    """
+    kit_id = _register_kit(client, admin_token, [], code="DIVJA500").json()["id"]
+    r = client.patch(f"/api/kits/{kit_id}", json={"description": "Bear samples, batch 3"},
+                     headers=bearer(admin_token))
+    assert r.status_code == 200, r.text
+
+    r = client.patch(f"/api/kits/{kit_id}", json={"status": "received"}, headers=bearer(admin_token))
+    assert r.status_code == 200, r.text
+    assert r.json()["description"] == "Bear samples, batch 3"
+
+    # An explicit empty string still clears it.
+    r = client.patch(f"/api/kits/{kit_id}", json={"description": ""}, headers=bearer(admin_token))
+    assert r.status_code == 200 and r.json()["description"] == ""
+
+
+def test_kit_list_exposes_description(client, catalog, admin_token):
+    """So a lost description would be visible in the admin table rather than invisible."""
+    kit_id = _register_kit(client, admin_token, [], code="DIVJA501").json()["id"]
+    client.patch(f"/api/kits/{kit_id}", json={"description": "Wolf, 2026"}, headers=bearer(admin_token))
+    kits = client.get("/api/kits", headers=bearer(admin_token)).json()
+    assert next(k for k in kits if k["id"] == kit_id)["description"] == "Wolf, 2026"

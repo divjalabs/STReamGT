@@ -10,7 +10,9 @@ export function setToken(t) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
-async function request(path, { method = "GET", body, form } = {}) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function request(path, { method = "GET", body, form, retries } = {}) {
   const headers = {};
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -21,7 +23,24 @@ async function request(path, { method = "GET", body, form } = {}) {
     headers["Content-Type"] = "application/json";
     payload = JSON.stringify(body);
   }
-  const res = await fetch(`/api${path}`, { method, headers, body: payload });
+  // The API sleeps when idle: the first request after a quiet spell can fail or take ~3-5s while
+  // the function and the database wake up. Retry GETs only — they're safe to repeat.
+  const attempts = retries ?? (method === "GET" ? 2 : 1);
+  let res;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      res = await fetch(`/api${path}`, { method, headers, body: payload });
+    } catch (networkErr) {
+      if (i === attempts - 1) throw apiError("Could not reach the server. Check your connection.", 0);
+      await sleep(800 * (i + 1));
+      continue;
+    }
+    if (res.status >= 502 && res.status <= 504 && i < attempts - 1) {
+      await sleep(800 * (i + 1));
+      continue;
+    }
+    break;
+  }
   if (!res.ok) {
     let detail;
     try {
@@ -29,10 +48,43 @@ async function request(path, { method = "GET", body, form } = {}) {
     } catch {
       detail = res.statusText;
     }
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw apiError(typeof detail === "string" ? detail : JSON.stringify(detail), res.status);
   }
   if (res.status === 204) return null;
   return res.json();
+}
+
+/** An Error carrying the HTTP status, so callers can tell "wrong password" from "server down". */
+function apiError(message, status) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+/**
+ * Guard a download response before we hand it to the browser.
+ *
+ * CloudFront's single-page-app fallback used to turn API 403/404 into "200 + index.html", so a
+ * failed export was saved as a .csv full of HTML. Checking the content-type here means a bad
+ * response can never reach the user's disk looking like data.
+ */
+async function assertDownloadable(res) {
+  if (!res.ok) {
+    let detail;
+    try {
+      detail = (await res.clone().json()).detail;
+    } catch {
+      detail = `Download failed (${res.status})`;
+    }
+    throw apiError(typeof detail === "string" ? detail : `Download failed (${res.status})`, res.status);
+  }
+  const type = res.headers.get("content-type") || "";
+  if (type.startsWith("text/html")) {
+    throw apiError(
+      "The server returned a web page instead of the file. Please try again, or report this if it keeps happening.",
+      res.status,
+    );
+  }
 }
 
 /** Fetch an authenticated binary endpoint and trigger a browser download. */
@@ -41,7 +93,7 @@ async function downloadBlob(path, filename) {
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`/api${path}`, { headers });
-  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  await assertDownloadable(res);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -69,7 +121,19 @@ export const api = {
       try { detail = (await res.json()).detail; } catch { detail = null; }
       throw new Error(detail || "Too many attempts. Please wait a moment and try again.");
     }
-    if (!res.ok) throw new Error("Incorrect email or password");
+    // Only 401 means the credentials were wrong. A 5xx (cold start, database waking) used to read
+    // as "Incorrect email or password", sending people off to reset a password that was fine.
+    if (res.status === 401) throw apiError("Incorrect email or password", 401);
+    if (!res.ok) {
+      let detail;
+      try { detail = (await res.json()).detail; } catch { detail = null; }
+      throw apiError(
+        detail || (res.status >= 500
+          ? "The server is not responding right now. Please try again in a moment."
+          : `Sign-in failed (${res.status})`),
+        res.status,
+      );
+    }
     return res.json();
   },
   me: () => request("/auth/me"),
@@ -226,11 +290,7 @@ export async function downloadExport(projectId, kind) {
   const res = await fetch(`/api/projects/${projectId}/export/${kind}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) {
-    let detail;
-    try { detail = (await res.json()).detail; } catch { detail = res.statusText; }
-    throw new Error(typeof detail === "string" ? detail : "export failed");
-  }
+  await assertDownloadable(res);
   const blob = await res.blob();
   const cd = res.headers.get("Content-Disposition") || "";
   const m = cd.match(/filename="?([^"]+)"?/);

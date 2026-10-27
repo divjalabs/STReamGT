@@ -6,17 +6,33 @@ const AuthCtx = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [unreachable, setUnreachable] = useState(false);
+
+  const loadMe = () => {
+    setUnreachable(false);
+    setLoading(true);
+    return api
+      .me()
+      .then((u) => {
+        setUser(u);
+        return u;
+      })
+      .catch((e) => {
+        // Only a 401 means the session is actually invalid. A timeout or a 5xx (the API waking
+        // from idle takes a few seconds) used to delete a perfectly good token and bounce the
+        // user to the login page.
+        if (e.status === 401) setToken(null);
+        else setUnreachable(true);
+      })
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     if (!getToken()) {
       setLoading(false);
       return;
     }
-    api
-      .me()
-      .then(setUser)
-      .catch(() => setToken(null))
-      .finally(() => setLoading(false));
+    loadMe();
   }, []);
 
   const login = async (email, password) => {
@@ -35,7 +51,9 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthCtx.Provider value={{ user, loading, login, register, logout, updateUser: setUser }}>
+    <AuthCtx.Provider
+      value={{ user, loading, unreachable, retry: loadMe, login, register, logout, updateUser: setUser }}
+    >
       {children}
     </AuthCtx.Provider>
   );

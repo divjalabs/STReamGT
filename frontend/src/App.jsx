@@ -23,15 +23,31 @@ import AdminPanels from "./pages/admin/AdminPanels.jsx";
 import AdminUsers from "./pages/admin/AdminUsers.jsx";
 import Manual from "./pages/Manual.jsx";
 
+/** Shown when the session is still valid but the server couldn't be reached — never log out. */
+function Unreachable() {
+  const { retry } = useAuth();
+  return (
+    <div className="container">
+      <p className="error">Could not reach the server.</p>
+      <p className="muted small">
+        It may be waking up after a quiet spell, which takes a few seconds. You are still signed in.
+      </p>
+      <button onClick={retry}>Try again</button>
+    </div>
+  );
+}
+
 function Protected({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, unreachable } = useAuth();
   if (loading) return <div className="container">Loading…</div>;
+  if (unreachable) return <Unreachable />;
   return user ? children : <Navigate to="/login" replace />;
 }
 
 function AdminProtected({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, unreachable } = useAuth();
   if (loading) return <div className="container">Loading…</div>;
+  if (unreachable) return <Unreachable />;
   if (!user) return <Navigate to="/login" replace />;
   return user.role === "admin" ? children : <Navigate to="/" replace />;
 }

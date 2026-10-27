@@ -43,3 +43,31 @@ def test_build_nextflow_cmd_params_flag():
         pipeline_dir="/p", input_tsv="/i.tsv", run_dir="/r", profile="local",
         min_identity=0.9, min_overlap=20)
     assert "--parameters_file_path" not in cmd2
+
+
+# --- Deployment-layout regression guards -------------------------------------------------
+# The API once shipped without pipeline/bin/parameters.json: every call to the defaults endpoint
+# (and so every job submission) 500'd in production, while these tests stayed green because the
+# repo tree above them always provided the file. These two check the *deployed* arrangement.
+
+def test_find_parameters_file_resolves_from_pipeline_dir_alone(tmp_path, monkeypatch):
+    """In the image there is no repo above the app, so PIPELINE_DIR has to be enough."""
+    from app.services import pipeline_params as pp
+
+    bin_dir = tmp_path / "pipeline" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "parameters.json").write_text('{"AlleleAcceptanceThreshold": 2}')
+    monkeypatch.setenv("PIPELINE_DIR", str(tmp_path / "pipeline"))
+
+    assert pp._find_parameters_file() == bin_dir / "parameters.json"
+
+
+def test_lambda_image_ships_parameters_json():
+    """deploy/Dockerfile.lambda must copy the file and point PIPELINE_DIR at it."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    dockerfile = (root / "deploy" / "Dockerfile.lambda").read_text()
+    assert "pipeline/bin/parameters.json" in dockerfile, \
+        "the Lambda image must COPY pipeline/bin/parameters.json — without it job submission 500s"
+    assert "PIPELINE_DIR=/app/pipeline" in dockerfile

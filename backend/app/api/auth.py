@@ -1,6 +1,8 @@
 """Authentication routes: register, login, current user."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
@@ -27,6 +29,8 @@ from app.schemas.user import (
     ChangePasswordIn,
 )
 from app.services import notify
+
+logger = logging.getLogger(__name__)
 from app.services import ratelimit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -64,8 +68,8 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> Token:
             db.scalars(select(User.email).where(User.role == UserRole.admin))
         )
         notify.send_new_user_registered(admin_emails, user.email, user.organisation)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception:  # noqa: BLE001 — never block signup, but leave a trace in the logs
+        logger.exception("could not email admins about the new registration (%s)", user.email)
 
     token = create_access_token(str(user.id), extra={"role": user.role.value})
     return Token(access_token=token, user=UserOut.model_validate(user))
@@ -127,8 +131,10 @@ def forgot_password(payload: ForgotPasswordIn, db: Session = Depends(get_db)) ->
         reset_url = f"{settings.frontend_base_url.rstrip('/')}/reset-password?token={token}"
         try:
             notify.send_password_reset(user.email, reset_url)
-        except Exception:  # noqa: BLE001 — never leak send failures or block the flow
-            pass
+        except Exception:  # noqa: BLE001 — the response must not reveal whether the address
+            # exists, but a silent failure left no trace at all: a user who never received a
+            # reset link was indistinguishable from one who mistyped their address.
+            logger.exception("password-reset email failed for user id %s", user.id)
 
 
 @router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)

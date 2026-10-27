@@ -10,14 +10,18 @@ FROM python:3.12-slim
 COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
 
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PYTHONDONTWRITEBYTECODE=1 \
-    PORT=8000 AWS_LWA_READINESS_CHECK_PATH=/health
+    PORT=8000 AWS_LWA_READINESS_CHECK_PATH=/health \
+    PIPELINE_DIR=/app/pipeline
 
 WORKDIR /app
 COPY backend/pyproject.toml ./
-# openpyxl: kit control sheets / plate downloads (the head image gets it from the OBITools venv).
-RUN pip install --upgrade pip && pip install . openpyxl
+RUN pip install --upgrade pip && pip install .
 
 COPY backend/app ./app
 COPY backend/seed_data ./seed_data
+# The API reads the pipeline's tuning defaults (services/pipeline_params.py) to show them on the
+# Submit page and to merge per-run overrides — so this one file must ship with the API too, even
+# though nothing else of the pipeline does.
+COPY pipeline/bin/parameters.json ./pipeline/bin/parameters.json
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

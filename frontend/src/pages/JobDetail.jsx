@@ -32,6 +32,7 @@ export default function JobDetail() {
   const [job, setJob] = useState(null);
   const [results, setResults] = useState([]);
   const [err, setErr] = useState(null);
+  const [stale, setStale] = useState(false);  // a poll failed; showing the last known state
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);   // bump to restart live polling (after a rerun)
   const [showReanalysis, setShowReanalysis] = useState(false);
@@ -109,21 +110,49 @@ export default function JobDetail() {
   };
 
   useEffect(() => {
+    let cancelled = false;
     let timer;
+    let failures = 0;
+    const MAX_FAILURES = 10;
+
     const poll = async () => {
       try {
         const j = await api.getJob(publicId);
+        if (cancelled) return;
+        failures = 0;
+        setStale(false);
+        setErr(null);
         setJob(j);
-        if (j.status === "succeeded") setResults(await api.getResults(publicId));
+        if (j.status === "succeeded") {
+          const r = await api.getResults(publicId);
+          if (cancelled) return;
+          setResults(r);
+        }
         if (j.status !== "succeeded" && j.status !== "failed") {
           timer = setTimeout(poll, 4000); // live-track progress
         }
       } catch (e) {
-        setErr(e.message);
+        if (cancelled) return;
+        if (e.status === 404) {        // the job is genuinely gone — stop and say so
+          setErr(e.message);
+          return;
+        }
+        // A pipeline run lasts hours; one failed poll must not end the page. Keep the last
+        // known state on screen, back off, and carry on.
+        failures += 1;
+        setStale(true);
+        if (failures >= MAX_FAILURES) {
+          setErr(`Lost contact with the server: ${e.message}`);
+          return;
+        }
+        timer = setTimeout(poll, Math.min(4000 * 2 ** failures, 60000));
       }
     };
     poll();
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;              // a poll already in flight must not schedule another
+      clearTimeout(timer);
+    };
   }, [publicId, tick]);
 
   // If this job's kit is linked to a single study, pre-fill the "Assign to project" target from it.
@@ -143,7 +172,13 @@ export default function JobDetail() {
       .catch(() => {});
   }, [job?.kit_id]);
 
-  if (err) return <div className="container"><p className="error">{err}</p></div>;
+  // Only blank the page when there is nothing to show; a hiccup mid-run keeps the last state.
+  if (err && !job) return (
+    <div className="container">
+      <p className="error">{err}</p>
+      <button onClick={() => { setErr(null); setTick((t) => t + 1); }}>Try again</button>
+    </div>
+  );
   if (!job) return <div className="container">Loading…</div>;
 
   const stepIdx = STEPS.indexOf(job.status);
@@ -152,6 +187,20 @@ export default function JobDetail() {
     <div className="container">
       <h1>Analysis {job.public_id.slice(0, 8)}</h1>
       <p className="muted">Kit #{job.kit_id} · submitted {new Date(job.created_at).toLocaleString()}</p>
+
+      {stale && !err && (
+        <p className="muted small">
+          ⟳ Reconnecting… showing the last known status. Your analysis keeps running regardless.
+        </p>
+      )}
+      {err && job && (
+        <p className="error">
+          {err}{" "}
+          <button className="secondary" onClick={() => { setErr(null); setTick((t) => t + 1); }}>
+            Try again
+          </button>
+        </p>
+      )}
 
       {job.status === "awaiting_confirmation" ? (
         <div className="card error-card">

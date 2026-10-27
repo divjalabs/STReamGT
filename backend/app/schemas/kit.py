@@ -109,6 +109,7 @@ class KitSummary(BaseModel):
     id: int
     kit_code: str
     species: str | None
+    description: str | None = None       # shown in the admin table, so a lost one is visible
     status: KitStatus
     updated_at: datetime | None = None   # last status change; None on older rows pre-migration
     tag_columns: list[TagColumnOut]
