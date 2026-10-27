@@ -9,9 +9,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 
 from sqlalchemy import select
 
+from app.config import settings
 from app.db import Base, engine, SessionLocal
 import app.models  # noqa: F401  registers tables
 from app.models import User, UserRole
@@ -25,7 +27,17 @@ def create_tables() -> None:
 
 def reset_tables() -> None:
     """DESTRUCTIVE: drop everything and recreate. On Postgres, drop the whole schema with CASCADE
-    so a *previous, incompatible* schema (stale FKs metadata.drop_all can't order) is wiped clean."""
+    so a *previous, incompatible* schema (stale FKs metadata.drop_all can't order) is wiped clean.
+
+    Guarded twice over: this wipes every sample, genotype and user in the target database, and a
+    stray `--reset` against the deployed DATABASE_URL would be unrecoverable without a backup.
+    """
+    if settings.environment != "development" or os.environ.get("STREAMGT_ALLOW_DESTRUCTIVE") != "yes":
+        raise SystemExit(
+            "reset_tables() refuses to run: it DROPs every table in "
+            f"{engine.url.host or engine.url.database}.\n"
+            "If you really mean it, set ENVIRONMENT=development and STREAMGT_ALLOW_DESTRUCTIVE=yes."
+        )
     if engine.dialect.name == "postgresql":
         with engine.begin() as conn:
             conn.exec_driver_sql("DROP SCHEMA public CASCADE")

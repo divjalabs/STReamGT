@@ -19,8 +19,12 @@ database is **Neon** (PostgreSQL 16, Frankfurt, project `holy-credit-81346788`, 
 | Cost control | S3 lifecycle: `uploads/` 14 d, `backups/db/` 30 d, `work/` 7 d, noncurrent versions 30 d | `backups/db/` expiring after 30 days is why the local copy matters |
 | Code | Git → `github.com/divjalabs/STReamGT` | Push after committing |
 
-**Golden rule:** run `scripts/backup.sh` before anything destructive — `python -m app.bootstrap
---reset`, a schema migration, or a bulk cleanup such as `python -m app.dedup_samples`.
+**Golden rule:** run `scripts/backup.sh` before anything destructive — `alembic upgrade head` on
+the live database, a bulk cleanup such as `python -m app.dedup_samples`, or `app.bootstrap --reset`
+(which now refuses unless `ENVIRONMENT=development` and `STREAMGT_ALLOW_DESTRUCTIVE=yes`).
+
+To see what a migration would change before running it:
+`DATABASE_URL="<neon url>" python -m app.schemacheck`.
 
 Because S3 expires dumps after 30 days, **keep the local copy**. The off-AWS folder
 (`streamgt-backup/`, git-ignored) is the only copy that outlives that window.

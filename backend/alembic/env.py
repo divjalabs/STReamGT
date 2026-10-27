@@ -1,6 +1,7 @@
 """Alembic migration environment, wired to the app's Base metadata and settings."""
 from __future__ import annotations
 
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -11,7 +12,12 @@ from app.db import Base
 import app.models  # noqa: F401  (import registers all models on Base.metadata)
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.resolved_database_url)
+# Read DATABASE_URL here rather than trusting the app's cached settings object: migrations are
+# routinely pointed at a different database than the process was configured with
+# (`DATABASE_URL=… alembic upgrade head`), and the cached singleton would silently ignore it.
+config.set_main_option(
+    "sqlalchemy.url", os.environ.get("DATABASE_URL") or settings.resolved_database_url
+)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

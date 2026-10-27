@@ -67,8 +67,18 @@ the existing variables.
 1. **S3 CORS** — allow the browser (on the CloudFront URL) to PUT FASTQ parts (unchanged).
 2. **SPA** — `npm run build`, `aws s3 sync dist s3://streamgt-site-236726878099/ --delete`,
    invalidate CloudFront.
-3. **DB schema / admin** — Neon is reachable from anywhere (TLS + password), so
-   `python -m app.bootstrap` can run locally with `DATABASE_URL` set to the Neon URL.
+3. **DB schema / admin** — Neon is reachable from anywhere (TLS + password), so these run
+   locally with `DATABASE_URL` set to the Neon URL:
+   ```bash
+   cd backend
+   DATABASE_URL="<neon url>" PYTHONPATH=. .venv/bin/python -m app.schemacheck   # what differs?
+   DATABASE_URL="<neon url>" .venv/bin/alembic upgrade head                      # apply migrations
+   DATABASE_URL="<neon url>" PYTHONPATH=. .venv/bin/python -m app.bootstrap --admin-email …
+   ```
+   **Alembic is the only schema path.** `app/dbupgrade.py` (hand-written additive SQL) is gone;
+   every column now needs a migration, and `tests/test_migrations.py` fails if a model gains one
+   without it. `app.bootstrap --reset` DROPs everything and now refuses to run unless
+   `ENVIRONMENT=development` and `STREAMGT_ALLOW_DESTRUCTIVE=yes`.
 
 ## Limits of the Lambda API
 - Request/response bodies are capped at **6 MB** (FASTQ uploads go direct to S3 via presigned
