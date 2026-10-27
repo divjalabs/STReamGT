@@ -157,8 +157,6 @@ def execute_job(job_id: int) -> str:
                 setattr(j, k, v)
             s.commit()
         final_status = status
-        if job in db:                               # keep the in-memory copy in step
-            db.expire(job)
 
     try:
         os.makedirs(inputs_dir, exist_ok=True)
@@ -208,21 +206,22 @@ def execute_job(job_id: int) -> str:
 
         # 3. Run Nextflow (outputs land at {scratch}/{kit_code}/...; the pipeline's REPORT
         #    process generates the HTML reports, so no separate render step here).
+        # Read everything the run needs while the session is still open — below it is closed,
+        # and a detached ORM object cannot load an attribute it has not already got.
+        nextflow_cmd = pr.build_nextflow_cmd(
+            pipeline_dir=settings.pipeline_dir, input_tsv=input_tsv, run_dir=scratch,
+            profile=settings.nextflow_profile,
+            min_identity=job.min_identity, min_overlap=job.min_overlap,
+            expected_read_number=job.expected_read_number,
+            parameters_file_path=params_path,
+        )
+
         set_status(JobStatus.running)
         _prepare_awsbatch_env()  # no-op unless nextflow_profile == "awsbatch"
-        # Nothing touches the database until the run finishes, so don't sit on a connection for
-        # the duration — the server would close it under us.
+        # Nothing touches the database for the length of the run, so don't sit on a connection —
+        # the server closes an idle transaction and the next write would fail.
         db.close()
-        _run(
-            pr.build_nextflow_cmd(
-                pipeline_dir=settings.pipeline_dir, input_tsv=input_tsv, run_dir=scratch,
-                profile=settings.nextflow_profile,
-                min_identity=job.min_identity, min_overlap=job.min_overlap,
-                expected_read_number=job.expected_read_number,
-                parameters_file_path=params_path,
-            ),
-            cwd=scratch, log_path=log_path,
-        )
+        _run(nextflow_cmd, cwd=scratch, log_path=log_path)
 
         # Fresh session for the post-run work; the pre-run one was released above.
         db = SessionLocal()

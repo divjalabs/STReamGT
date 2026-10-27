@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models import Job
-from app.models.enums import JobStatus
+from app.models.enums import JobStatus, ResultKind
 from app.worker import tasks
 from tests.conftest import bearer
 from tests.test_jobs_api import _make_kit, job_payload, no_enqueue  # noqa: F401
@@ -72,3 +72,48 @@ def test_status_writes_do_not_reuse_one_session(client, catalog, admin_token, no
     # One for the job lookup, then a separate one per status write (staging, failed) and the
     # recipient lookup — never a single long-lived session.
     assert len(opened) >= 3, f"expected several short sessions, saw {len(opened)}"
+
+
+def test_full_run_succeeds_end_to_end(client, catalog, admin_token, no_enqueue, monkeypatch,
+                                      tmp_path):
+    """Walk execute_job from staging to succeeded with only the *external* calls stubbed.
+
+    The earlier tests stopped at staging, so they never reached the code that runs after the
+    session is deliberately closed — where a detached ORM object killed a real run one second in.
+    This one exercises every statement in between.
+    """
+    job_id = _submit(client, admin_token)
+
+    monkeypatch.setattr(tasks, "_stage_ref", lambda ref, src, dest: open(dest, "w").close())
+    monkeypatch.setattr(tasks, "_stage_kit_csvs", lambda kit, d: ("primers.csv", "tags.csv"))
+    monkeypatch.setattr(tasks, "_stage_batches", lambda job, d: [
+        {"sample_path": "s.xlsx", "tags": "PP1-PP4"},
+    ])
+    monkeypatch.setattr(tasks, "build_input_tsv", lambda **kw: "kit_id\tsample_path\n")
+    monkeypatch.setattr(tasks.pr, "count_fastq_reads", lambda *a, **kw: 10_000_000)
+
+    ran: dict = {}
+
+    def fake_run(cmd, cwd, log_path):
+        ran["cmd"] = cmd          # proves the command was built before the session closed
+        open(log_path, "w").close()
+
+    monkeypatch.setattr(tasks, "_run", fake_run)
+
+    result_file = tmp_path / "DIVJA240_genotypes.txt"
+    result_file.write_text("x\n")
+    monkeypatch.setattr(tasks.pr, "collect_results", lambda outdir, kit: [
+        tasks.pr.CollectedResult(ResultKind.genotypes, str(result_file), result_file.name),
+    ])
+    monkeypatch.setattr(tasks.pr, "find_result", lambda *a, **kw: None)
+    monkeypatch.setattr(tasks.storage, "upload_file", lambda src, key: None)
+    monkeypatch.setattr(tasks.pr, "archive_logs", lambda *a, **kw: None)
+
+    assert tasks.execute_job(job_id) == "succeeded", "a clean run must reach succeeded"
+    assert ran["cmd"], "nextflow command was never built"
+
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        assert job.status == JobStatus.succeeded
+        assert job.finished_at is not None
+        assert job.kit.status.value == "analysed"
