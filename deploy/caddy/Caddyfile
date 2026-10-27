@@ -1,0 +1,17 @@
+# Reverse proxy + automatic TLS. Replace the site address with your domain in prod.
+# Locally, use `http://localhost` (no TLS) by setting SITE_ADDRESS=:80.
+
+{$SITE_ADDRESS:localhost} {
+	encode gzip
+
+	# API under /api and /health -> FastAPI
+	@api path /api/* /health /docs /openapi.json
+	handle @api {
+		reverse_proxy api:8000
+	}
+
+	# Everything else -> the frontend static build (served by the frontend container).
+	handle {
+		reverse_proxy frontend:80
+	}
+}

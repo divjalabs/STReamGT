@@ -1,0 +1,414 @@
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { api, uploadFile } from "../api/client.js";
+import SampleTable, { rowsToSampleText, filledWellCount, TOTAL_WELLS, controlPlateWarnings } from "../components/SampleTable.jsx";
+import TargetPicker from "../components/TargetPicker.jsx";
+
+const EMPTY_TARGET = { project_id: null, default_population_id: null, default_study_id: null };
+
+let batchSeq = 1;
+const newBatch = () => ({
+  uid: batchSeq++,
+  name: "",
+  sampleMode: "upload", // "upload" | "table"
+  sampleFile: null,
+  sheetWells: null,     // filled-well count of an uploaded plate (null=unknown, -1=unreadable)
+  sampleRows: [],
+  selectedTags: [],
+});
+
+export default function Submit() {
+  const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [kits, setKits] = useState([]);
+  const [kitId, setKitId] = useState(searchParams.get("kit") || "");
+  const [fastqMode, setFastqMode] = useState("upload"); // "upload" | "server" | "ref"
+  const [fq1, setFq1] = useState({ file: null, ref: "", pct: 0 });
+  const [fq2, setFq2] = useState({ file: null, ref: "", pct: 0 });
+  const [serverReads, setServerReads] = useState(null);  // kit's saved FASTQ pair, if any
+  const [expectedReads, setExpectedReads] = useState(10000000);
+  const [batches, setBatches] = useState([newBatch()]);
+  const [target, setTarget] = useState(EMPTY_TARGET);
+  const [jobs, setJobs] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [paramDefaults, setParamDefaults] = useState(null);
+  const [params, setParams] = useState({});
+  const [paramsErr, setParamsErr] = useState(null);  // defaults unreadable -> say so, don't hide
+  const [jobsErr, setJobsErr] = useState(null);      // can't tell whether a run is already going
+
+  useEffect(() => {
+    api.listKits().then(setKits).catch((e) => setErr(e.message));
+    // A failure here silently re-enabled submitting while another run was in flight.
+    api.listJobs().then(setJobs).catch((e) => setJobsErr(e.message));
+    api.getParameterDefaults()
+      .then((d) => { setParamDefaults(d); setParams(d); })
+      .catch((e) => setParamsErr(e.message));
+  }, []);
+
+  const kit = kits.find((k) => String(k.id) === String(kitId));
+
+  // Load the kit's saved server reads; default to reusing them when present.
+  useEffect(() => {
+    if (!kit) { setServerReads(null); return; }
+    api.getKitReads(kit.id).then((r) => {
+      setServerReads(r);
+      if (r) setFastqMode("server");
+    }).catch(() => setServerReads(null));
+  }, [kit?.id]);
+
+  // A kit may have only one job in flight; block resubmission until it finishes.
+  const TERMINAL = ["succeeded", "failed"];
+  const kitBusy = !!kit && jobs.some((j) => j.kit_id === kit.id && !TERMINAL.includes(j.status));
+
+  // Position controls defined on the kit, keyed by well (drives pre-fill, colouring, warnings).
+  const controlsByPos = {};
+  for (const c of (kit?.controls || [])) {
+    if (c.position) {
+      const pos = c.position.toUpperCase();
+      controlsByPos[pos] = { kind: c.kind, name: c.name || `${kit.kit_code}_${c.kind}_${c.position}` };
+    }
+  }
+  const warnings = kit
+    ? batches.flatMap((b, i) =>
+        (b.sampleMode === "table" ? controlPlateWarnings(b.sampleRows, controlsByPos) : [])
+          .map((w) => (batches.length > 1 ? `Batch ${i + 1}: ${w}` : w)))
+    : [];
+
+  // When a kit is picked, tick all of its tag columns in the FIRST batch only; later
+  // batches start empty (each PP column can belong to just one batch — see cross-check below).
+  useEffect(() => {
+    if (!kit) return;
+    const all = kit.tag_columns.map((t) => t.name);
+    // seed each batch's plate with the kit's control wells (pre-filled names, editable)
+    const seed = (rows) => {
+      const out = rows ? [...rows] : [];
+      for (const [pos, c] of Object.entries(controlsByPos)) {
+        const existing = out.find((r) => r.pos.trim().toUpperCase() === pos);
+        if (existing) { if (!existing.name.trim()) existing.name = c.name; }
+        else out.push({ uid: `ctrl-${pos}`, pos, name: c.name });
+      }
+      return out;
+    };
+    setBatches((bs) => bs.map((b, i) => ({ ...b, selectedTags: i === 0 ? all : [], sampleRows: seed(b.sampleRows) })));
+    // Pre-fill the ingestion target from the kit's linked study (if exactly one).
+    if (kit.studies && kit.studies.length === 1) {
+      const s = kit.studies[0];
+      setTarget({ project_id: s.project_id, default_population_id: s.population_id ?? null, default_study_id: s.id });
+    }
+  }, [kit?.id]);   // fire once the kit resolves — incl. when ?kit= arrives before kits load
+
+  const setBatch = (uid, patch) =>
+    setBatches((bs) => bs.map((b) => (b.uid === uid ? { ...b, ...patch } : b)));
+
+  // Pick an Excel plate: store the file, then count its filled wells so submit can require a full plate.
+  const onPickSheet = (uid, file) => {
+    setBatch(uid, { sampleFile: file || null, sheetWells: null });
+    if (!file) return;
+    api.inspectSampleSheet(file)
+      .then((r) => setBatch(uid, { sheetWells: r.wells }))
+      .catch(() => setBatch(uid, { sheetWells: -1 }));
+  };
+  const toggleTag = (uid, name) =>
+    setBatches((bs) =>
+      bs.map((b) =>
+        b.uid === uid
+          ? {
+              ...b,
+              selectedTags: b.selectedTags.includes(name)
+                ? b.selectedTags.filter((t) => t !== name)
+                : [...b.selectedTags, name],
+            }
+          : b
+      )
+    );
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(null);
+    if (!kit) return setErr("Choose a kit.");
+    if (kit.status === "analysed")
+      return setErr("This kit has already been analysed. Contact an admin to re-enable it (reanalyse).");
+    if (kitBusy)
+      return setErr("A job for this kit is already running. Wait for it to finish before submitting again.");
+    setBusy(true);
+    try {
+      // 1. FASTQ: upload or reference.
+      let fastq_source = "upload";
+      let fastq1_ref, fastq2_ref;
+      if (fastqMode === "server") {
+        if (!serverReads) throw new Error("No reads saved on the server for this kit — upload instead.");
+        fastq_source = "server";
+        fastq1_ref = serverReads.fastq1_key;
+        fastq2_ref = serverReads.fastq2_key;
+      } else if (fastqMode === "upload") {
+        if (!fq1.file || !fq2.file) throw new Error("Upload both FASTQ files.");
+        // upload under the kit's prefix → the backend saves them as this kit's reads
+        fastq1_ref = await uploadFile(fq1.file, "fastq", (p) => setFq1((s) => ({ ...s, pct: p })), kit.id);
+        fastq2_ref = await uploadFile(fq2.file, "fastq", (p) => setFq2((s) => ({ ...s, pct: p })), kit.id);
+      } else {
+        if (!fq1.ref || !fq2.ref) throw new Error("Provide both FASTQ paths/links.");
+        fastq_source = fq1.ref.startsWith("http") ? "link" : "server";
+        fastq1_ref = fq1.ref;
+        fastq2_ref = fq2.ref;
+      }
+
+      // 2. Batches: upload sample sheets or send pasted text.
+      const outBatches = [];
+      const seenTags = new Set();
+      for (const b of batches) {
+        if (!b.name) throw new Error("Every batch needs a name.");
+        if (b.selectedTags.length === 0) throw new Error(`Batch ${b.name}: pick at least one tag column.`);
+        const dup = b.selectedTags.filter((t) => seenTags.has(t));
+        if (dup.length)
+          throw new Error(`Batch ${b.name}: PP column(s) ${dup.join(", ")} are already used in another batch.`);
+        b.selectedTags.forEach((t) => seenTags.add(t));
+        const out = { name: b.name, selected_tags: b.selectedTags };
+        if (b.sampleMode === "upload") {
+          if (!b.sampleFile) throw new Error(`Batch ${b.name}: upload a sample sheet.`);
+          if (b.sheetWells == null) throw new Error(`Batch ${b.name}: still reading the sample sheet — wait a moment, then submit.`);
+          if (b.sheetWells < 0) throw new Error(`Batch ${b.name}: could not read the sample sheet — re-upload a plate .xlsx.`);
+          if (b.sheetWells < TOTAL_WELLS) throw new Error(`Batch ${b.name}: all ${TOTAL_WELLS} wells must be filled (currently ${b.sheetWells}).`);
+          out.sample_sheet_key = await uploadFile(b.sampleFile, "sample");
+        } else {
+          const n = filledWellCount(b.sampleRows);
+          if (n < TOTAL_WELLS) throw new Error(`Batch ${b.name}: all ${TOTAL_WELLS} wells must be filled (currently ${n}).`);
+          out.sample_names_text = rowsToSampleText(b.sampleRows, controlsByPos);
+        }
+        outBatches.push(out);
+      }
+
+      // 3. Create the job (optional ingestion target routes results into a project on success).
+      const payload = {
+        kit_id: kit.id,
+        fastq_source,
+        fastq1_ref,
+        fastq2_ref,
+        expected_read_number: Number(expectedReads) || null,
+        parameters: params,
+        batches: outBatches,
+      };
+      if (target.project_id) {
+        payload.project_id = target.project_id;
+        payload.default_population_id = target.default_population_id;
+        payload.default_study_id = target.default_study_id;
+      }
+      const job = await api.createJob(payload);
+      nav(`/jobs/${job.public_id}`);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="container">
+      <h1>Analyse the data</h1>
+      {err && <p className="error">{err}</p>}
+      {warnings.length > 0 && (
+        <div className="card warn-card warn-sticky">
+          <b>⚠️ Check the plate before submitting</b>
+          <ul className="warn-list">
+            {warnings.slice(0, 8).map((w, i) => <li key={i}>{w}</li>)}
+            {warnings.length > 8 && <li>…and {warnings.length - 8} more.</li>}
+          </ul>
+          <p className="muted small">Warnings only — you can still submit.</p>
+        </div>
+      )}
+      <form onSubmit={submit}>
+        <section className="card">
+          <label>
+            Library (kit) name
+            <select value={kitId} onChange={(e) => setKitId(e.target.value)} required>
+              <option value="">— choose a kit —</option>
+              {kits.map((k) => (
+                <option key={k.id} value={k.id}>{k.kit_code}{k.species ? ` (${k.species})` : ""}</option>
+              ))}
+            </select>
+          </label>
+          {kit && <p className="muted">Species: <b>{kit.species || "—"}</b> · tag columns: {kit.tag_columns.map((t) => t.name).join(", ")}</p>}
+          {kit && kit.status === "analysed" && (
+            <p className="error">⚠️ Each kit can be analysed only once. This kit is already analysed — contact an admin to re-enable it (reanalyse).</p>
+          )}
+          {kit && kitBusy && (
+            <p className="error">⚠️ A job for this kit is already running. Wait for it to finish before submitting again.</p>
+          )}
+        </section>
+
+        <section className="card">
+          <h2>Assign to project <span className="muted small">(optional — for consensus &amp; matching)</span></h2>
+          <p className="muted small">On success, the samples are assigned to this project/population so
+            you can run consensus and matching. Leave blank to only produce result files.
+            {kit && kit.studies && kit.studies.length === 1 && " Pre-filled from this kit's linked study."}</p>
+          <TargetPicker value={target} onChange={setTarget} disabled={busy} />
+        </section>
+
+        <section className="card">
+          <h2>FASTQ (one pair per run, shared by all batches)</h2>
+          <div className="tabs">
+            {serverReads && (
+              <button type="button" className={fastqMode === "server" ? "active" : ""} onClick={() => setFastqMode("server")}>Reads on server</button>
+            )}
+            <button type="button" className={fastqMode === "upload" ? "active" : ""} onClick={() => setFastqMode("upload")}>Upload</button>
+            <button type="button" className={fastqMode === "ref" ? "active" : ""} onClick={() => setFastqMode("ref")}>Server path / link</button>
+          </div>
+          {fastqMode === "server" ? (
+            serverReads ? (
+              <div className="server-reads">
+                <p><b>R1:</b> {serverReads.fastq1_name || serverReads.fastq1_key}</p>
+                <p><b>R2:</b> {serverReads.fastq2_name || serverReads.fastq2_key}</p>
+                <p className="muted small">Saved for this kit{serverReads.uploaded_by_email ? ` by ${serverReads.uploaded_by_email}` : ""} on {new Date(serverReads.uploaded_at).toLocaleString()}. These will be reused — no upload needed.</p>
+              </div>
+            ) : <p className="muted">No reads saved on the server for this kit yet.</p>
+          ) : fastqMode === "upload" ? (
+            <>
+              <label>fastqF (R1)<input type="file" accept=".gz,.fastq" onChange={(e) => setFq1({ ...fq1, file: e.target.files[0] })} /></label>
+              {fq1.pct > 0 && <Progress pct={fq1.pct} />}
+              <label>fastqR (R2)<input type="file" accept=".gz,.fastq" onChange={(e) => setFq2({ ...fq2, file: e.target.files[0] })} /></label>
+              {fq2.pct > 0 && <Progress pct={fq2.pct} />}
+              <p className="muted small">Uploaded reads are saved to <b>{kit ? kit.kit_code : "this kit"}</b> and replace any previous ones.</p>
+            </>
+          ) : (
+            <>
+              <label>fastqF (R1) path or URL<input value={fq1.ref} onChange={(e) => setFq1({ ...fq1, ref: e.target.value })} placeholder="s3 key / /server/path / https://…" /></label>
+              <label>fastqR (R2) path or URL<input value={fq2.ref} onChange={(e) => setFq2({ ...fq2, ref: e.target.value })} /></label>
+            </>
+          )}
+          <label>Expected read number (for QC report)
+            <input type="number" value={expectedReads} onChange={(e) => setExpectedReads(e.target.value)} />
+          </label>
+        </section>
+
+        {batches.map((b, i) => {
+          const usedElsewhere = new Set(
+            batches.filter((x) => x.uid !== b.uid).flatMap((x) => x.selectedTags)
+          );
+          return (
+          <section className="card" key={b.uid}>
+            <div className="row">
+              <h2>Sample batch {i + 1}</h2>
+              <span className="spacer" />
+              {batches.length > 1 && (
+                <button type="button" className="link" onClick={() => setBatches((bs) => bs.filter((x) => x.uid !== b.uid))}>remove</button>
+              )}
+            </div>
+            <label>Batch name<input value={b.name} onChange={(e) => setBatch(b.uid, { name: e.target.value })} placeholder="e.g. HRM01" /></label>
+
+            <fieldset>
+              <legend>Samples</legend>
+              <div className="tabs">
+                <button type="button" className={b.sampleMode === "upload" ? "active" : ""} onClick={() => setBatch(b.uid, { sampleMode: "upload", sampleFile: null, sheetWells: null })}>Upload Excel</button>
+                <button type="button" className={b.sampleMode === "table" ? "active" : ""} onClick={() => setBatch(b.uid, { sampleMode: "table" })}>Enter samples</button>
+              </div>
+              {b.sampleMode === "upload" ? (
+                <>
+                  <input type="file" accept=".xlsx" onChange={(e) => onPickSheet(b.uid, e.target.files[0])} />
+                  {b.sampleFile && (
+                    b.sheetWells == null ? (
+                      <p className="muted small">Reading the plate…</p>
+                    ) : b.sheetWells < 0 ? (
+                      <p className="error small">Could not read the sheet — expected a plate .xlsx.</p>
+                    ) : b.sheetWells < TOTAL_WELLS ? (
+                      <p className="error small">Only {b.sheetWells} / {TOTAL_WELLS} wells filled — all {TOTAL_WELLS} are required to submit.</p>
+                    ) : (
+                      <p className="muted small"><span className="well-count ok">{b.sheetWells} / {TOTAL_WELLS} wells</span></p>
+                    )
+                  )}
+                </>
+              ) : (
+                <SampleTable value={b.sampleRows} onChange={(rows) => setBatch(b.uid, { sampleRows: rows })} controls={controlsByPos} />
+              )}
+            </fieldset>
+
+            <fieldset>
+              <legend>Tags (PP columns)</legend>
+              {!kit ? (
+                <p className="muted">Choose a kit to see its tag columns.</p>
+              ) : (
+                <>
+                  {batches.length > 1 && (
+                    <p className="muted">Each PP column belongs to a single batch — columns already used in another batch are disabled here.</p>
+                  )}
+                  <div className="chips">
+                    {kit.tag_columns.map((t) => {
+                      const taken = usedElsewhere.has(t.name);
+                      return (
+                        <label
+                          key={t.name}
+                          className={`chip ${b.selectedTags.includes(t.name) ? "on" : ""}${taken ? " disabled" : ""}`}
+                          title={taken ? "Already assigned to another batch" : undefined}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={b.selectedTags.includes(t.name)}
+                            disabled={taken}
+                            onChange={() => toggleTag(b.uid, t.name)}
+                          />
+                          {t.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </fieldset>
+          </section>
+          );
+        })}
+
+        <button type="button" className="secondary" onClick={() => setBatches((bs) => [...bs, newBatch()])}>+ add another sample batch</button>
+
+        {paramsErr && (
+          <p className="error">
+            Could not load the allele-calling parameters: {paramsErr}. The analysis will use the
+            pipeline's built-in defaults, and they can't be adjusted here right now.
+          </p>
+        )}
+        {jobsErr && (
+          <p className="muted small">
+            ⚠️ Could not check whether this kit already has an analysis running ({jobsErr}). If one
+            is, submitting again will be refused.
+          </p>
+        )}
+
+        {paramDefaults && (
+          <details className="card">
+            <summary><b>Advanced parameters</b> <span className="muted small">— allele-calling thresholds; defaults are usually right</span></summary>
+            <div className="row">
+              <span className="spacer" />
+              <button type="button" className="link" onClick={() => setParams(paramDefaults)}>reset to defaults</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".4rem 1rem" }}>
+              {Object.entries(paramDefaults).map(([k, def]) => (
+                <label key={k} className="inline-label" style={{ justifyContent: "space-between" }}>
+                  <span className="mono small">{k}</span>
+                  {typeof def === "boolean" ? (
+                    <input type="checkbox" checked={!!params[k]}
+                           onChange={(e) => setParams((p) => ({ ...p, [k]: e.target.checked }))} />
+                  ) : typeof def === "string" ? (
+                    <input value={params[k] ?? ""} style={{ width: "8rem" }}
+                           onChange={(e) => setParams((p) => ({ ...p, [k]: e.target.value }))} />
+                  ) : (
+                    <input type="number" step="any" value={params[k] ?? ""} style={{ width: "8rem" }}
+                           onChange={(e) => setParams((p) => ({ ...p, [k]: e.target.value === "" ? def : Number(e.target.value) }))} />
+                  )}
+                </label>
+              ))}
+            </div>
+          </details>
+        )}
+
+        <div className="submit-bar">
+          <button type="submit" disabled={busy || kit?.status === "analysed" || kitBusy}>{busy ? "Submitting…" : "Submit analysis"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Progress({ pct }) {
+  return (
+    <div className="progress"><div style={{ width: `${Math.round(pct * 100)}%` }} /></div>
+  );
+}
