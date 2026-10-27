@@ -24,9 +24,12 @@ if [ "$RUNNING" != "0" ]; then
   [ "$answer" = "y" ] || { echo "aborted"; exit 1; }
 fi
 
+# `docker run -e VAR` forwards the variable only if it is EXPORTED in this shell.
+export URL
 URL=$(aws ssm get-parameter --region "$REGION" --name /streamgt/DATABASE_URL \
   --with-decryption --query Parameter.Value --output text | sed 's/postgresql+psycopg:/postgresql:/')
 
+export SQL
 SQL="UPDATE jobs
        SET status = 'failed', finished_at = now(), error_message = \$reason\$${REASON}\$reason\$
      WHERE id = ${JOB_ID}
