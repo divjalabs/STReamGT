@@ -23,7 +23,54 @@ app.add_middleware(
 
 @app.get("/health", tags=["meta"])
 def health() -> dict:
+    """Liveness only — dependency-free, so the container's readiness probe stays fast."""
     return {"status": "ok", "app": settings.app_name, "env": settings.environment}
+
+
+@app.get(f"{settings.api_prefix}/health", tags=["meta"])
+def api_health(deep: bool = False) -> dict:
+    """Reachable through CloudFront (the bare /health is not — it routes to the SPA bucket).
+
+    With ?deep=1, check the things that are invisible until a user hits them: every S3 call once
+    failed with InvalidAccessKeyId for weeks, and the pipeline parameters file was missing from
+    the image, each breaking a core flow while /health still said "ok".
+    """
+    out: dict = {"status": "ok", "app": settings.app_name, "env": settings.environment}
+    if not deep:
+        return out
+
+    checks: dict[str, str] = {}
+
+    try:
+        from sqlalchemy import text
+        from app.db import engine
+
+        with engine.connect() as conn:
+            conn.execute(text("select 1"))
+        checks["database"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        checks["database"] = f"error: {type(exc).__name__}"
+
+    try:
+        from app.services import storage
+
+        storage._client().head_bucket(Bucket=settings.s3_bucket)
+        checks["s3"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        checks["s3"] = f"error: {type(exc).__name__}"
+
+    try:
+        from app.services.pipeline_params import default_parameters
+
+        checks["pipeline_parameters"] = "ok" if default_parameters() else "empty"
+    except Exception as exc:  # noqa: BLE001
+        checks["pipeline_parameters"] = f"error: {type(exc).__name__}"
+
+    checks["secret_key"] = "default" if settings.secret_key == "change-me-in-prod" else "configured"
+
+    out["checks"] = checks
+    out["status"] = "ok" if all(v in ("ok", "configured") for v in checks.values()) else "degraded"
+    return out
 
 
 app.include_router(auth.router, prefix=settings.api_prefix)

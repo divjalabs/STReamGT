@@ -58,8 +58,18 @@ case "$CODE" in
   *) fail "GET /api/jobs/parameters/defaults" "got $CODE $CTYPE — $BODY" ;;
 esac
 
+echo "[6] Deep health: the dependencies a user hits (database, S3, pipeline parameters)"
+#     These fail invisibly: /health kept saying ok while every S3 call was rejected and the
+#     pipeline parameters file was missing from the image.
+get "/api/health?deep=1"
+case "$BODY" in
+  *'"status":"ok"'*) pass "GET /api/health?deep=1 -> all dependencies ok" ;;
+  *'"checks"'*)      fail "a dependency is unhealthy" "$BODY" ;;
+  *)                 fail "GET /api/health?deep=1" "got $CODE $CTYPE — $BODY" ;;
+esac
+
 if [ -n "${SMOKE_EMAIL:-}" ] && [ -n "${SMOKE_PASSWORD:-}" ]; then
-  echo "[6] Logged-in checks"
+  echo "[7] Logged-in checks"
   TOKEN=$(curl -s -m 40 -X POST "$APP_URL/api/auth/login" \
     -d "username=$SMOKE_EMAIL&password=$SMOKE_PASSWORD" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
@@ -76,7 +86,7 @@ if [ -n "${SMOKE_EMAIL:-}" ] && [ -n "${SMOKE_PASSWORD:-}" ]; then
     [ "$CODE" = 200 ] && pass "GET /api/kits -> 200" || fail "GET /api/kits" "got $CODE"
   fi
 else
-  echo "[6] Logged-in checks skipped (set SMOKE_EMAIL and SMOKE_PASSWORD to include them)"
+  echo "[7] Logged-in checks skipped (set SMOKE_EMAIL and SMOKE_PASSWORD to include them)"
 fi
 
 rm -f /tmp/smoke.body
