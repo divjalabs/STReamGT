@@ -61,3 +61,43 @@ def test_choose_part_size_scales_for_huge_files():
     assert storage.choose_part_size(2 * 1024 * MiB) == 16 * MiB          # 2 GB -> 16 MiB (128 parts)
     big = storage.choose_part_size(50 * 1024 * MiB)                       # 50 GB -> larger parts
     assert big > 16 * MiB and (50 * 1024 * MiB) / big <= 500              # stays <= ~500 parts
+
+
+# --- Credential resolution ---------------------------------------------------------------
+# On Lambda the runtime exports AWS_ACCESS_KEY_ID/SECRET *and* AWS_SESSION_TOKEN. Passing the
+# first two to boto3 without the token made every S3 call fail with InvalidAccessKeyId, which
+# took out FASTQ uploads and every download. Real AWS must use boto3's own credential chain.
+
+def test_no_explicit_credentials_against_real_aws(monkeypatch):
+    from app.services import storage
+    from app.config import get_settings
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "ASIAEXAMPLE")        # as Lambda sets them
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.delenv("S3_ENDPOINT_URL", raising=False)
+    get_settings.cache_clear()
+    monkeypatch.setattr(storage, "settings", get_settings())
+
+    kwargs = storage._client_kwargs()
+    assert "aws_access_key_id" not in kwargs, (
+        "explicit keys without AWS_SESSION_TOKEN break every S3 call on Lambda"
+    )
+    assert "endpoint_url" not in kwargs
+    get_settings.cache_clear()
+
+
+def test_explicit_credentials_for_a_local_endpoint(monkeypatch):
+    """MinIO/localstack in dev still needs its static key pair."""
+    from app.services import storage
+    from app.config import get_settings
+
+    monkeypatch.setenv("S3_ENDPOINT_URL", "http://localhost:9000")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "minio")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "minio123")
+    get_settings.cache_clear()
+    monkeypatch.setattr(storage, "settings", get_settings())
+
+    kwargs = storage._client_kwargs()
+    assert kwargs["endpoint_url"] == "http://localhost:9000"
+    assert kwargs["aws_access_key_id"] == "minio"
+    get_settings.cache_clear()

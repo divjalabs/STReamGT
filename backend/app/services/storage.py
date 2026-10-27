@@ -29,16 +29,30 @@ def choose_part_size(size: int, target_parts: int = 500) -> int:
     return -(-want // _MIB) * _MIB  # round up to a whole MiB
 
 
+def _client_kwargs() -> dict:
+    """Explicit keys are for a local MinIO/localstack endpoint only.
+
+    On real AWS the credentials must come from boto3's own chain. Lambda exports
+    AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY *together with* AWS_SESSION_TOKEN; pydantic picks
+    up the first two as settings, and passing those two without the token makes every S3 call fail
+    with InvalidAccessKeyId. (On ECS the credentials arrive via the container metadata endpoint
+    rather than the environment, so the same code happened to work there.)
+    """
+    kwargs = {
+        "region_name": settings.s3_region,
+        "config": Config(signature_version="s3v4"),
+    }
+    if settings.s3_endpoint_url:
+        kwargs["endpoint_url"] = settings.s3_endpoint_url
+        if settings.aws_access_key_id:
+            kwargs["aws_access_key_id"] = settings.aws_access_key_id
+            kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+    return kwargs
+
+
 @lru_cache
 def _client():
-    return boto3.client(
-        "s3",
-        region_name=settings.s3_region,
-        endpoint_url=settings.s3_endpoint_url or None,
-        aws_access_key_id=settings.aws_access_key_id or None,
-        aws_secret_access_key=settings.aws_secret_access_key or None,
-        config=Config(signature_version="s3v4"),
-    )
+    return boto3.client("s3", **_client_kwargs())
 
 
 @dataclass
