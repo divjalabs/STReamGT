@@ -97,3 +97,27 @@ def test_write_sample_xlsx_roundtrip(tmp_path):
     ws = wb.active
     assert [c.value for c in ws[1]] == ["TPositionId", "SPositionBC", "control_type"]
     assert [c.value for c in ws[2]] == ["A1", "S1", "pcr"]
+
+
+def test_archive_logs_collects_nested_logs_and_nextflow_log(tmp_path):
+    """Per-locus logs live in a subdirectory that collect_results never walks, and the scratch
+    directory is deleted on success — so they must be archived before cleanup."""
+    scratch = tmp_path / "scratch"
+    logs = scratch / "DIVJA240" / "reports" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "MSUT2_callAlleleUL.log").write_text("locus log\n")
+    (scratch / ".nextflow.log").write_text("nextflow\n")
+    (scratch / "run.log").write_text("run\n")
+
+    dest = scratch / "logs.tar.gz"
+    assert pr.archive_logs(str(scratch), "DIVJA240", str(dest)) == str(dest)
+
+    import tarfile
+    with tarfile.open(dest) as tar:
+        names = set(tar.getnames())
+    assert "logs/MSUT2_callAlleleUL.log" in names
+    assert ".nextflow.log" in names and "run.log" in names
+
+
+def test_archive_logs_returns_none_when_there_is_nothing(tmp_path):
+    assert pr.archive_logs(str(tmp_path), "DIVJA240", str(tmp_path / "logs.tar.gz")) is None

@@ -248,6 +248,17 @@ def execute_job(job_id: int) -> str:
         _safe_notify(notify.send_job_failed, job.user.email, kit.kit_code, job.public_id, str(exc)[:500])
         return "failed"
     finally:
+        # Preserve the logs before the scratch dir goes away. Best-effort on both paths: this is
+        # diagnostics, and failing here must not change the job's outcome.
+        try:
+            prefix = job.storage_prefix or f"results/{kit.kit_code}/{job.public_id}"
+            archive = pr.archive_logs(scratch, kit.kit_code, os.path.join(scratch, "logs.tar.gz"))
+            if archive:
+                storage.upload_file(archive, f"{prefix}/logs.tar.gz")
+                log.info("pipeline logs archived to %s/logs.tar.gz", prefix)
+        except Exception:  # noqa: BLE001
+            log.exception("could not archive pipeline logs for job %s", job.public_id)
+
         db.close()
         # Keep scratch on failure for debugging; clean on success.
         if job.status == JobStatus.succeeded:

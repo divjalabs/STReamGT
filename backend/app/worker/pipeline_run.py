@@ -84,6 +84,30 @@ class CollectedResult:
     filename: str
 
 
+def archive_logs(scratch: str, kit_id: str, dest_path: str) -> str | None:
+    """Tar up everything that explains a run: the per-locus logs the pipeline publishes under
+    reports/logs/, Nextflow's own .nextflow.log, and our captured run.log.
+
+    The scratch directory is deleted after a successful run, so without this a run that *looked*
+    fine (a locus silently emptied by a collapsed threshold, say) leaves nothing to inspect.
+    Returns the archive path, or None when there was nothing to collect.
+    """
+    import tarfile
+
+    candidates = [
+        (os.path.join(scratch, kit_id, "reports", "logs"), "logs"),
+        (os.path.join(scratch, ".nextflow.log"), ".nextflow.log"),
+        (os.path.join(scratch, "run.log"), "run.log"),
+    ]
+    present = [(path, arcname) for path, arcname in candidates if os.path.exists(path)]
+    if not present:
+        return None
+    with tarfile.open(dest_path, "w:gz") as tar:
+        for path, arcname in present:
+            tar.add(path, arcname=arcname)
+    return dest_path
+
+
 def collect_results(outdir: str, kit_id: str) -> list[CollectedResult]:
     """Find published outputs under {outdir}/{kit_id}/{results,reports}.
 
