@@ -33,10 +33,10 @@ export SQL
 SQL="UPDATE jobs
        SET status = 'failed', finished_at = now(), error_message = \$reason\$${REASON}\$reason\$
      WHERE id = ${JOB_ID}
-       AND status NOT IN ('succeeded', 'failed', 'cancelled')
+       AND status NOT IN ('succeeded', 'failed')   -- the only terminal states (JobStatus.is_terminal)
    RETURNING id, status, left(error_message, 60) AS error_message;"
 
 docker run --rm -e URL -e SQL postgres:16 sh -c 'psql "$URL" -v ON_ERROR_STOP=1 -c "$SQL"' \
-  || { echo "Could not reach the database (is Docker running?)" >&2; exit 1; }
+  || { echo "The update did not run — see the error above. (If there is none, check Docker is running.)" >&2; exit 1; }
 
 echo "If no row came back, the job was already in a finished state — nothing to do."
