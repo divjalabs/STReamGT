@@ -150,8 +150,15 @@ export default function Submit() {
         fastq1_ref = await uploadFile(fq1.file, "fastq", (p) => setFq1((s) => ({ ...s, pct: p })), kit.id);
         fastq2_ref = await uploadFile(fq2.file, "fastq", (p) => setFq2((s) => ({ ...s, pct: p })), kit.id);
       } else {
-        if (!fq1.ref || !fq2.ref) throw new Error("Provide both FASTQ paths/links.");
-        fastq_source = fq1.ref.startsWith("http") ? "link" : "server";
+        if (!fq1.ref || !fq2.ref) throw new Error("Provide both FASTQ paths.");
+        // No URLs. Fetching one happened inside the task that holds our secrets, so the mode was
+        // removed; say so here rather than letting it fail later as a missing file.
+        if ([fq1.ref, fq2.ref].some((r) => r.includes("://")))
+          throw new Error(
+            "FASTQ files can't be fetched from a web address. Upload the pair, or use reads " +
+            "already stored for this kit."
+          );
+        fastq_source = "server";
         fastq1_ref = fq1.ref;
         fastq2_ref = fq2.ref;
       }
@@ -257,7 +264,7 @@ export default function Submit() {
               <button type="button" className={fastqMode === "server" ? "active" : ""} onClick={() => setFastqMode("server")}>Reads on server</button>
             )}
             <button type="button" className={fastqMode === "upload" ? "active" : ""} onClick={() => setFastqMode("upload")}>Upload</button>
-            <button type="button" className={fastqMode === "ref" ? "active" : ""} onClick={() => setFastqMode("ref")}>Server path / link</button>
+            <button type="button" className={fastqMode === "ref" ? "active" : ""} onClick={() => setFastqMode("ref")}>Server path</button>
           </div>
           {fastqMode === "server" ? (
             serverReads ? (
@@ -277,8 +284,12 @@ export default function Submit() {
             </>
           ) : (
             <>
-              <label>fastqF (R1) path or URL<input value={fq1.ref} onChange={(e) => setFq1({ ...fq1, ref: e.target.value })} placeholder="s3 key / /server/path / https://…" /></label>
-              <label>fastqR (R2) path or URL<input value={fq2.ref} onChange={(e) => setFq2({ ...fq2, ref: e.target.value })} /></label>
+              <p className="muted small">
+                A file already stored for this kit — a storage key, or a path on the analysis
+                server. Web addresses aren't accepted; upload the files instead.
+              </p>
+              <label>fastqF (R1) path<input value={fq1.ref} onChange={(e) => setFq1({ ...fq1, ref: e.target.value })} placeholder="reads/kit/… or /server/path" /></label>
+              <label>fastqR (R2) path<input value={fq2.ref} onChange={(e) => setFq2({ ...fq2, ref: e.target.value })} /></label>
             </>
           )}
           <label>Expected read number (for QC report)

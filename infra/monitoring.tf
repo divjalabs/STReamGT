@@ -124,10 +124,10 @@ resource "aws_cloudwatch_metric_alarm" "api_lambda_errors" {
 # ---------- signal 3: the pipeline's infrastructure failed ----------
 # Free: rules reacting to AWS's own service events are never billed.
 #
-# Scoped by cluster only. Matching the task definition family would be redundant (nothing else runs
-# in this cluster) and useless anyway: scripts/backup.sh runs the database dump as a command
-# override on the SAME streamgt-head family, so nothing in the event tells them apart. That is
-# fine — a backup task killed by the platform deserves the same email.
+# Scoped by cluster, then narrowed by the task group where it matters: the weekly backup runs in
+# this same cluster (see backup.tf) and has its own rule with its own wording, so the "killed"
+# rule below excludes it rather than emailing twice. A backup that cannot START is left to the
+# rule immediately below — one email either way, and the wording is close enough.
 
 resource "aws_cloudwatch_event_rule" "head_task_failed_to_start" {
   name        = "${var.project}-head-task-failed-to-start"
@@ -163,6 +163,9 @@ resource "aws_cloudwatch_event_rule" "head_task_killed" {
       # SIGTERM and kills the container 30s later — but a stop we requested always reports
       # UserInitiated, so this pairing is the only thing keeping the Stop button silent.
       stopCode = ["EssentialContainerExited"]
+      # The weekly backup has its own rule with its own wording, so exclude it here rather than
+      # emailing twice about the same out-of-memory kill.
+      group = [{ "anything-but" = ["scheduled-backup"] }]
       # Matched against each element of the containers array. 137 = killed (Fargate's
       # out-of-memory kill), 139 = segfault. Exit code 1 is deliberately absent: run_job.py exits 1
       # for an ordinary analysis failure AND for a user-requested stop, so it distinguishes nothing.
@@ -246,4 +249,76 @@ resource "aws_budgets_budget" "monthly" {
     notification_type          = "FORECASTED"
     subscriber_email_addresses = [var.alert_email]
   }
+}
+
+# ---------- signal 5: the weekly backup ----------
+# Three separate ways this can fail quietly: the schedule never fires, it cannot start the task
+# (which emits no ECS event at all, because no task is ever created), or the dump itself fails.
+# The alarm below catches all three by watching for the success line instead of for failures.
+
+resource "aws_cloudwatch_event_rule" "db_backup_failed" {
+  name        = "${var.project}-db-backup-failed"
+  description = "The weekly database dump ran and failed. Told apart from a genotyping run by the task group the schedule sets."
+
+  event_pattern = jsonencode({
+    source        = ["aws.ecs"]
+    "detail-type" = ["ECS Task State Change"]
+    detail = {
+      clusterArn = [aws_ecs_cluster.main.arn]
+      lastStatus = ["STOPPED"]
+      group      = ["scheduled-backup"]
+      # anything-but 0 rather than a list: pg_dump failures exit 1, but a kill or a segfault
+      # differ, and all of them mean there is no backup.
+      containers = { exitCode = [{ "anything-but" = [0] }] }
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "db_backup_failed_sns" {
+  rule      = aws_cloudwatch_event_rule.db_backup_failed.name
+  target_id = "sns"
+  arn       = aws_sns_topic.alerts.arn
+
+  input_transformer {
+    input_paths = {
+      at       = "$.time"
+      exitCode = "$.detail.containers[0].exitCode"
+      reason   = "$.detail.stoppedReason"
+    }
+    input_template = "\"STReamGT: the weekly database backup FAILED.\\n\\nWhen:       <at>\\nExit code:  <exitCode>\\nReason:     <reason>\\n\\nThere is no new dump this week. The most recent one is still in S3 (kept 180 days), but take one by hand before anything destructive, with scripts/backup.sh\\n\\nLogs: aws logs tail /ecs/streamgt-head --since 2h\""
+  }
+}
+
+# The one that catches a backup which never happened at all — including a schedule that silently
+# did nothing. app.dbbackup prints this line only after the upload succeeds.
+resource "aws_cloudwatch_log_metric_filter" "db_backup_ok" {
+  name           = "${var.project}-db-backup-ok"
+  log_group_name = aws_cloudwatch_log_group.head.name
+  pattern        = "\"backup uploaded: s3://\""
+
+  metric_transformation {
+    name      = "DbBackupUploaded"
+    namespace = var.project
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "db_backup_missing" {
+  alarm_name  = "${var.project}-db-backup-missing"
+  namespace   = var.project
+  metric_name = aws_cloudwatch_log_metric_filter.db_backup_ok.metric_transformation[0].name
+
+  statistic           = "Sum"
+  period              = 86400 # the maximum CloudWatch allows; 8 of them covers a missed Sunday
+  evaluation_periods  = 8
+  datapoints_to_alarm = 8
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  # The opposite of the other alarms: here the ABSENCE of data IS the failure.
+  treat_missing_data = "breaching"
+
+  alarm_description = "No database backup has been uploaded for 8 days. The weekly schedule either did not fire, could not start its task, or ran and failed. Check: aws scheduler get-schedule --name streamgt-db-backup --region eu-central-1 ; aws s3 ls s3://streamgt-data-236726878099/backups/db/"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
 }

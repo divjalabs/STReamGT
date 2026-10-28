@@ -67,7 +67,7 @@ Pick your kit from the **Library (kit) name** dropdown. The page then shows the 
 Each analysis uses **one pair of FASTQ files** — a forward read file (**R1**) and a reverse read file (**R2**) — shared across all of your sample batches. You have two options:
 
 - **Upload** — choose your R1 and R2 files (`.fastq` or `.fastq.gz`). A progress bar shows the upload; **large files (often \~2 GB) can take a while, so keep the tab open.**
-- **Server path / link** — instead of uploading, paste a location the platform can read: an `https://` download link, or a path/key already stored on the server.
+- **Server path** — instead of uploading, paste the location of a file already stored for this kit. Web addresses are not accepted: fetching one would happen inside the analysis machine, which holds the platform's own credentials, so that option was removed.
 
 Then set the **Expected read number** — roughly how many reads you expect the run to produce (default 10,000,000). This is used for a safety check and for your QC report — see [Step 5 low-read check](#5-tracking-progress).
 
@@ -165,7 +165,7 @@ try the same inputs once more.
 
 **I can't find my kit.** Kits are registered and assigned by an administrator. If one is missing from **My kits**, contact your admin.
 
-**My upload is slow or seems stuck.** FASTQ files are large. Keep the browser tab open until the progress bar completes. On a shaky connection, the **Server path / link** option (Step 2) lets you point at data already stored online instead of uploading.
+**My upload is slow or seems stuck.** FASTQ files are large. Keep the browser tab open until the progress bar completes. On a shaky connection, the **Server path** option (Step 2) lets you point at data already stored for the kit instead of uploading it again.
 
 **"All 96 wells must be filled."** When entering samples on-screen, every well of the plate must have a name before you can submit. If you have fewer samples, use the **Upload Excel** option with your own sample sheet instead.
 

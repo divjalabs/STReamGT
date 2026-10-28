@@ -13,7 +13,6 @@ import logging
 import os
 import shutil
 import subprocess
-import urllib.request
 from datetime import datetime, timezone
 
 from sqlalchemy import update
@@ -45,12 +44,16 @@ def _now() -> datetime:
 
 
 def _stage_ref(ref: str, source: FastqSource, dest: str) -> None:
-    """Materialize a FASTQ ref (S3 key / server path / URL) to a local file."""
-    if source == FastqSource.link:
-        urllib.request.urlretrieve(ref, dest)
-    elif source == FastqSource.server and os.path.isabs(ref) and os.path.exists(ref):
+    """Materialize a FASTQ ref (an S3 key, or a local path on a single-VM deployment) locally.
+
+    There is deliberately no "fetch this URL" branch: this runs inside the task that holds S3
+    write access and the app's secrets, so a user-supplied URL was a way to read either (urllib
+    honours file:// as well as http://). The API now rejects anything that is not a key under a
+    prefix the submitter owns.
+    """
+    if source == FastqSource.server and os.path.isabs(ref) and os.path.exists(ref):
         shutil.copy(ref, dest)
-    else:  # upload, or server key held in the bucket
+    else:  # a key in the bucket — the only path the cloud deployment ever takes
         storage.download_file(ref, dest)
 
 

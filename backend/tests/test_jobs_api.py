@@ -24,11 +24,14 @@ def _make_kit(client, admin_token, assigned_ids, code="DIVJA240") -> int:
 
 
 def job_payload(kit_id):
+    # Keys under the kit's own prefix: that is what the upload endpoint allocates for a kit's
+    # FASTQ, and what the API now requires (a job may only read files belonging to its kit or
+    # to the submitter).
     return {
         "kit_id": kit_id,
         "fastq_source": "upload",
-        "fastq1_ref": "uploads/1/x/reads_1.fastq.gz",
-        "fastq2_ref": "uploads/1/x/reads_2.fastq.gz",
+        "fastq1_ref": f"reads/kit/{kit_id}/x/reads_1.fastq.gz",
+        "fastq2_ref": f"reads/kit/{kit_id}/x/reads_2.fastq.gz",
         "expected_read_number": 10_000_000,
         "batches": [
             {"name": "HRM01", "sample_sheet_key": "uploads/1/x/HRM01.xlsx",
@@ -422,3 +425,54 @@ def test_download_batch_plate(client, catalog, admin_token, user_token, no_enque
     # unknown batch -> 404
     assert client.get(f"/api/jobs/{pub}/batches/999999/plate.xlsx",
                       headers=bearer(user_token)).status_code == 404
+
+
+# --- What a job is allowed to read ---------------------------------------------------------
+# A job's FASTQ refs used to be taken on trust: any signed-in user could point one at any key in
+# the bucket, and the pipeline would stage it. The URL mode was worse — it fetched arbitrary
+# addresses from inside the task that holds S3 write access and the app's secrets.
+
+def test_job_cannot_reference_another_kits_reads(client, catalog, admin_token, no_enqueue):
+    mine = _make_kit(client, admin_token, assigned_ids=[], code="DIVJA600")
+    theirs = _make_kit(client, admin_token, assigned_ids=[], code="DIVJA601")
+
+    payload = job_payload(mine)
+    payload["fastq1_ref"] = f"reads/kit/{theirs}/x/reads_1.fastq.gz"
+    r = client.post("/api/jobs", json=payload, headers=bearer(admin_token))
+    assert r.status_code == 403
+    assert "does not belong" in r.json()["detail"]
+
+
+def test_job_cannot_reference_someone_elses_upload(client, catalog, admin_token, user_token,
+                                                   no_enqueue):
+    kit_id = _make_kit(client, admin_token, assigned_ids=[user_id("user@x.com")])
+    payload = job_payload(kit_id)
+    payload["fastq1_ref"] = "uploads/99999/x/reads_1.fastq.gz"   # not this user's namespace
+    assert client.post("/api/jobs", json=payload, headers=bearer(user_token)).status_code == 403
+
+
+def test_job_cannot_fetch_a_url(client, catalog, admin_token, no_enqueue):
+    """The removed 'link' mode, and any attempt to smuggle a URL through another mode."""
+    kit_id = _make_kit(client, admin_token, assigned_ids=[], code="DIVJA602")
+
+    payload = job_payload(kit_id)
+    payload["fastq1_ref"] = "https://example.org/reads_1.fastq.gz"
+    r = client.post("/api/jobs", json=payload, headers=bearer(admin_token))
+    assert r.status_code == 422
+    assert "web address" in r.json()["detail"]
+
+    # file:// was the nastier one — urllib honoured it, so it read local files.
+    payload["fastq1_ref"] = "file:///proc/self/environ"
+    assert client.post("/api/jobs", json=payload, headers=bearer(admin_token)).status_code == 422
+
+    # And the mode itself no longer exists.
+    payload["fastq1_ref"] = f"reads/kit/{kit_id}/x/reads_1.fastq.gz"
+    payload["fastq_source"] = "link"
+    assert client.post("/api/jobs", json=payload, headers=bearer(admin_token)).status_code == 422
+
+
+def test_reusing_a_kits_saved_reads_still_works(client, catalog, admin_token, no_enqueue):
+    """The common path: 'server' mode pointing at the kit's stored pair must stay allowed."""
+    kit_id = _make_kit(client, admin_token, assigned_ids=[], code="DIVJA603")
+    payload = {**job_payload(kit_id), "fastq_source": "server"}
+    assert client.post("/api/jobs", json=payload, headers=bearer(admin_token)).status_code == 201

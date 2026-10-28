@@ -88,3 +88,27 @@ def test_downgrade_to_base_is_clean(pg_env):
 
     tables = set(inspect(schemacheck.make_engine()).get_table_names()) - {"alembic_version"}
     assert not tables, f"downgrade left tables behind: {sorted(tables)}"
+
+
+def test_fastq_source_enum_has_no_link_value(pg_env):
+    """The drift test above compares tables and columns, never enum values — so the one thing
+    migration 0013 does would otherwise go unchecked."""
+    from alembic import command
+    from sqlalchemy import text
+
+    _reset_schema()
+    command.upgrade(_alembic_config(), "head")
+
+    from app import schemacheck
+
+    with schemacheck.make_engine().connect() as conn:
+        labels = set(conn.execute(text(
+            "SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid "
+            "WHERE t.typname = 'fastq_source'"
+        )).scalars())
+
+    assert labels == {"upload", "server"}, (
+        f"the database allows {sorted(labels)} but the model allows ['server', 'upload'] — "
+        "fetching a FASTQ from a URL was removed because it ran inside the task holding our "
+        "secrets"
+    )

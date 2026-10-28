@@ -13,10 +13,11 @@ database is **Neon** (PostgreSQL 16, Frankfurt, project `holy-credit-81346788`, 
 | Layer | Mechanism | Notes |
 |---|---|---|
 | DB short-term | Neon history / branch restore | Restore the branch to an earlier moment. The free plan's window is short — check it in the Neon console before relying on it |
-| DB long-term / off-cloud | `scripts/backup.sh` → `pg_dump` gzip → S3 + local copy | Portable, restorable into any Postgres. **The main protection** |
+| DB automatic | **Weekly, Sunday 03:15** — a scheduled task dumps to `s3://…/backups/db/`, kept **180 days** | Runs unattended; an alarm fires if no backup lands for 8 days |
+| DB long-term / off-cloud | `scripts/backup.sh` → `pg_dump` gzip → S3 + **local copy** | The only copy that leaves AWS. Still manual — run it before anything destructive |
 | DB accidental delete | Neon project deletion needs explicit confirmation | There is no equivalent of Aurora's deletion-protection flag |
 | Files (FASTQ/results) | S3 **versioning ON** + `scripts/backup.sh` local sync | Overwrites and deletes recoverable |
-| Cost control | S3 lifecycle: `uploads/` 14 d, `backups/db/` 30 d, `work/` 7 d, noncurrent versions 30 d | `backups/db/` expiring after 30 days is why the local copy matters |
+| Cost control | S3 lifecycle: `uploads/` 14 d, `backups/db/` **180 d**, `work/` 7 d, noncurrent versions 30 d | Lifecycle rules are managed in `infra/backup.tf` — edit them there, never by hand |
 | Code | Git → `github.com/divjalabs/STReamGT` | Push after committing |
 
 **Golden rule:** run `scripts/backup.sh` before anything destructive — `alembic upgrade head` on
@@ -119,8 +120,9 @@ hourly cost — so use it only to retrieve something, then delete the cluster ag
 ---
 
 ## Notes
-- Nothing here is automated: `scripts/backup.sh` runs when you run it. If backups should be
-  regular, the cheapest option is an EventBridge schedule that starts the same one-off ECS task
-  (roughly a cent per run).
+- The weekly dump to S3 is automatic (`infra/backup.tf`); the **local** copy is not, because
+  nothing in AWS can write to your laptop. Run `scripts/backup.sh` for that, and before anything
+  destructive.
+- If a backup fails, or none lands for 8 days, an alert goes to the address in `var.alert_email`.
 - Neon's free plan has a storage cap (0.5 GB) and a compute allowance; a database that grows past
   those needs a paid plan or a move back to a managed Postgres.

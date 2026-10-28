@@ -54,9 +54,16 @@ class ControlKind(str, enum.Enum):
 
 
 class FastqSource(str, enum.Enum):
-    upload = "upload"     # multipart uploaded to S3
-    server = "server"     # references an existing path/key on the server/bucket
-    link = "link"         # external URL to fetch
+    """Where a job's FASTQ pair comes from. Both values resolve to keys in our own bucket.
+
+    A third value, `link` (fetch an arbitrary URL), was removed in 2026-10: the pipeline task
+    holds S3 write access and the app's secrets, so handing it a user-supplied URL — which
+    urllib also honours as file:// — was a way to read either. It had never been used.
+    """
+
+    upload = "upload"     # multipart uploaded to S3 by the browser
+    server = "server"     # a key already in the bucket (a kit's saved reads), or a local path
+                          # on a single-VM deployment
 
 
 class ResultKind(str, enum.Enum):

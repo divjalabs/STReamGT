@@ -70,6 +70,32 @@ def enqueue_job(job_id: int) -> str | None:
     return f"{CELERY_HANDLE_PREFIX}{run_pipeline.delay(job_id).id}"
 
 
+def _check_fastq_refs(payload, kit: Kit, current: User) -> None:
+    """A job may only read FASTQ files it has a claim to.
+
+    Nothing used to check these: any signed-in user could submit a job pointing at any key in the
+    bucket — another lab's reads, or a results file — and have the pipeline stage it. Keys are
+    allocated by the API (api/jobs.init_upload), so a legitimate submission always sits under this
+    kit's reads/ prefix or the submitter's own uploads/ namespace.
+    """
+    allowed = (f"reads/kit/{kit.id}/", f"uploads/{current.id}/")
+    for field, ref in (("fastq1_ref", payload.fastq1_ref), ("fastq2_ref", payload.fastq2_ref)):
+        if not ref:
+            continue
+        if "://" in ref:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "FASTQ files can't be fetched from a web address. Upload the pair, or choose "
+                "reads already stored for this kit.",
+            )
+        if ref.startswith(allowed) or (os.path.isabs(ref) and settings.run_mode != "ecs"):
+            continue    # an absolute path is only meaningful on a single-VM deployment
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"{field} points at a file that does not belong to this kit or to you.",
+        )
+
+
 def _dispatch(db: Session, job: Job) -> None:
     """Hand the job to compute, and never leave it committed-but-unstarted.
 
@@ -233,6 +259,8 @@ def create_job(
             status.HTTP_409_CONFLICT,
             "A job for this kit is already running. Wait for it to finish before submitting again.",
         )
+
+    _check_fastq_refs(payload, kit, current)
 
     valid_tags = {t.name for t in kit.tag_columns}
     seen_tags: set[str] = set()
