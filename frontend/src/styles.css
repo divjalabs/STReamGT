@@ -227,6 +227,9 @@ tr.discarded .tag { text-decoration: none; }
 .danger-zone h2 { color: #b91c1c; }
 button.danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
 button.danger:disabled { opacity: .45; cursor: not-allowed; }
+/* Outlined danger: reads as a real button, but doesn't shout like the solid one it leads to. */
+button.danger-outline { background: #fff; color: #b91c1c; border: 1px solid #b91c1c; }
+button.danger-outline:hover { background: rgba(185,28,28,.06); filter: none; }
 .danger-box {
   border: 1px solid rgba(200,60,60,.5); border-radius: 8px; padding: .8rem 1rem;
   background: rgba(200,60,60,.06); max-width: 46rem;
@@ -289,6 +292,9 @@ button.linkish { background: none; color: var(--brand); padding: .1rem .2rem; fo
 button.danger-link { background: none; color: var(--err); padding: .1rem .2rem; font-size: .85rem; }
 .confirm-inline { display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; color: var(--err); flex-wrap: wrap; }
 .confirm-inline button { padding: .15rem .5rem; font-size: .8rem; }
+/* Stopping a run is a deliberate act, so keep its buttons full size and the text readable. */
+.confirm-inline.prominent { font-size: .9rem; gap: .6rem; }
+.confirm-inline.prominent button { padding: .5rem .9rem; font-size: inherit; }
 .del-panel { margin: .4rem 0 .2rem; padding: .5rem .7rem; border: 1px solid rgba(200,60,60,.4);
   border-radius: 7px; background: rgba(200,60,60,.05); }
 .del-panel .row select, .del-panel .row button { font-size: .85rem; }

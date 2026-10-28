@@ -265,7 +265,7 @@ export default function JobDetail() {
           {isStoppable(job.status) && (
             <p>
               {confirmStop ? (
-                <span className="confirm-inline">
+                <span className="confirm-inline prominent">
                   Stop this analysis? Nothing is saved, and you can submit this kit again.
                   <button className="danger" disabled={busy} onClick={stop}>
                     {busy ? "Stopping…" : "Stop analysis"}
@@ -275,8 +275,8 @@ export default function JobDetail() {
                   </button>
                 </span>
               ) : (
-                <button className="danger-link" onClick={() => setConfirmStop(true)}>
-                  Stop analysis
+                <button className="danger-outline" onClick={() => setConfirmStop(true)}>
+                  ■ Stop analysis
                 </button>
               )}
               {stopErr && <span className="error"> {stopErr}</span>}
