@@ -54,3 +54,6 @@ test_data/
 
 # Local off-AWS backups (DB dumps + data) — never commit
 streamgt-backup/
+
+# Excalidraw diagrams — large JSON with embedded images; kept locally, not in the repo
+*.excalidraw
