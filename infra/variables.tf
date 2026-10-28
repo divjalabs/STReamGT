@@ -39,3 +39,7 @@ variable "head_ephemeral_gb" { default = 200 } # Nextflow work dir + obiuniq /tm
 
 # The app's public URL (links in emails, CORS). Fixed: it's the existing CloudFront domain.
 variable "frontend_base_url" { default = "https://d2qy3qqpz2ebmu.cloudfront.net" }
+
+# Where operational alerts go. Separate from email_from on purpose: that is the address the app
+# sends FROM, and changing one must not silently change the other.
+variable "alert_email" { default = "elena.pazhenkova@divjalabs.com" }

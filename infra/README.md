@@ -53,6 +53,37 @@ aws lambda add-permission --function-name streamgt-api --statement-id FunctionUR
   --action lambda:InvokeFunction --principal '*' --invoked-via-function-url
 ```
 
+## Alerts
+
+`monitoring.tf` turns a broken app into an email within minutes — two faults once ran for weeks
+because nobody was reading the logs. Everything in it sits inside the AWS always-free allowances.
+
+| Signal | Fires when |
+|---|---|
+| `streamgt-api-unhandled-errors` | an HTTP 500 or a rejected AWS call reached a user (reads the logs — the Lambda error metric stays at zero for these) |
+| `streamgt-api-lambda-errors` | the function itself failed: bad image, timeout, out of memory, unreadable secrets |
+| `streamgt-head-task-failed-to-start` | a genotyping task never started (image, networking, secrets, capacity) |
+| `streamgt-head-task-killed` | a container was killed by the platform (out of memory) — *not* an ordinary analysis failure, *not* the Stop button |
+| `streamgt-monthly` budget | spend passes $5 / $15 / $30 / $40, or is forecast to pass $50 |
+
+**After the first apply you must confirm the email subscription** — AWS sends a confirmation link,
+and until it is clicked every alert is discarded silently:
+```bash
+aws sns list-subscriptions-by-topic --region eu-central-1 \
+  --topic-arn arn:aws:sns:eu-central-1:236726878099:streamgt-alerts \
+  --query 'Subscriptions[].SubscriptionArn'     # "PendingConfirmation" = nothing is being delivered
+```
+
+Test delivery without breaking anything (sends a real email, reverts on the next evaluation):
+```bash
+aws cloudwatch set-alarm-state --region eu-central-1 --alarm-name streamgt-api-unhandled-errors \
+  --state-value ALARM --state-reason "smoke test"
+```
+
+The budget predates Terraform and was adopted with
+`terraform import aws_budgets_budget.monthly 236726878099:streamgt-monthly`. Keep it as one budget
+with several thresholds: AWS gives two budgets free, then charges about $0.60/month each.
+
 ## Rolling out a new API image
 Terraform ignores `image_uri` after creation; push the image, then:
 ```bash
