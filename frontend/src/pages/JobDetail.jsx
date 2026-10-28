@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
+import { JOB_STEPS as STEPS, isTerminal, isStoppable } from "../config/jobs.js";
 import TargetPicker from "../components/TargetPicker.jsx";
-
-const STEPS = ["queued", "staging", "running", "uploading", "succeeded"];
 const REPORT_KINDS = ["html_report", "consensus_report"];
 const CONSENSUS_KINDS = ["consensus", "consensus_report", "reference_alleles"];
 const HIDDEN_KINDS = ["reads_summary"];
@@ -33,6 +32,8 @@ export default function JobDetail() {
   const [results, setResults] = useState([]);
   const [err, setErr] = useState(null);
   const [stale, setStale] = useState(false);  // a poll failed; showing the last known state
+  const [confirmStop, setConfirmStop] = useState(false);
+  const [stopErr, setStopErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);   // bump to restart live polling (after a rerun)
   const [showReanalysis, setShowReanalysis] = useState(false);
@@ -66,6 +67,18 @@ export default function JobDetail() {
       setJob(j); setResults([]); setTick((t) => t + 1);   // restart polling from queued
     } catch (e) {
       setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stop = async () => {
+    setBusy(true); setStopErr(null);
+    try {
+      const j = await api.stopJob(publicId);
+      setJob(j); setConfirmStop(false); setTick((t) => t + 1);  // let an in-flight poll be replaced
+    } catch (e) {
+      setStopErr(e.message);
     } finally {
       setBusy(false);
     }
@@ -128,7 +141,7 @@ export default function JobDetail() {
           if (cancelled) return;
           setResults(r);
         }
-        if (j.status !== "succeeded" && j.status !== "failed") {
+        if (!isTerminal(j.status)) {
           timer = setTimeout(poll, 4000); // live-track progress
         }
       } catch (e) {
@@ -242,11 +255,37 @@ export default function JobDetail() {
           )}
         </div>
       ) : (
-        <ol className="steps">
-          {STEPS.map((s, i) => (
-            <li key={s} className={i < stepIdx ? "done" : i === stepIdx ? "active" : ""}>{s}</li>
-          ))}
-        </ol>
+        <>
+          <ol className="steps">
+            {STEPS.map((s, i) => (
+              <li key={s} className={i < stepIdx ? "done" : i === stepIdx ? "active" : ""}>{s}</li>
+            ))}
+          </ol>
+
+          {isStoppable(job.status) && (
+            <p>
+              {confirmStop ? (
+                <span className="confirm-inline">
+                  Stop this analysis? Nothing is saved, and you can submit this kit again.
+                  <button className="danger" disabled={busy} onClick={stop}>
+                    {busy ? "Stopping…" : "Stop analysis"}
+                  </button>
+                  <button className="secondary" disabled={busy} onClick={() => setConfirmStop(false)}>
+                    Keep running
+                  </button>
+                </span>
+              ) : (
+                <button className="danger-link" onClick={() => setConfirmStop(true)}>
+                  Stop analysis
+                </button>
+              )}
+              {stopErr && <span className="error"> {stopErr}</span>}
+            </p>
+          )}
+          {job.status === "uploading" && (
+            <p className="muted small">Saving results — this analysis can no longer be stopped.</p>
+          )}
+        </>
       )}
 
       <h2>Sample batches</h2>

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, uploadFile } from "../api/client.js";
+import { isTerminal } from "../config/jobs.js";
 
 const KIT_STATUS_CLASS = { analysed: "ok", reanalyse: "warn", received: "", sent: "muted" };
 const JOB_STATUS_CLASS = { succeeded: "ok", failed: "error", queued: "muted" };
-const TERMINAL = ["succeeded", "failed"];
 
 // Per-kit FASTQ reads: shows the saved pair (if any) and lets an admin/user upload or replace it.
 function ReadsUploader({ kit, onChange }) {
@@ -89,7 +89,8 @@ export default function Kits() {
 
   const jobsFor = (kitId) =>
     jobs.filter((j) => j.kit_id === kitId).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  const kitBusy = (kitId) => jobs.some((j) => j.kit_id === kitId && !TERMINAL.includes(j.status));
+  // The in-flight job itself, not just a flag: the user needs a way to reach it and stop it.
+  const runningJob = (kitId) => jobsFor(kitId).find((j) => !isTerminal(j.status));
 
   const speciesList = [...new Set((kits || []).map((k) => k.species).filter(Boolean))].sort();
   const q = query.trim().toLowerCase();
@@ -144,7 +145,8 @@ export default function Kits() {
       ) : (
         <div className="kit-list">
           {shown.map((k) => {
-            const busy = kitBusy(k.id);
+            const running = runningJob(k.id);
+            const busy = Boolean(running);
             const canRun = k.status !== "analysed" && !busy;
             const kjobs = jobsFor(k.id);
             return (
@@ -172,7 +174,12 @@ export default function Kits() {
                     {k.status === "analysed" && (
                       <span className="muted small">analysed — contact admin to reanalyse</span>
                     )}
-                    {busy && <span className="muted small">a job is running</span>}
+                    {running && (
+                      <span className="muted small">
+                        a job is running —{" "}
+                        <Link to={`/jobs/${running.public_id}`}>see it or stop it</Link>
+                      </span>
+                    )}
                   </div>
                 </div>
                 <ReadsUploader kit={k} onChange={load} />

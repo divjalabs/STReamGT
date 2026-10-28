@@ -61,6 +61,11 @@ class Job(Base):
     storage_prefix: Mapped[str | None] = mapped_column(String(512))  # s3 prefix for results
     nextflow_run_name: Mapped[str | None] = mapped_column(String(128))
     error_message: Mapped[str | None] = mapped_column(String(4096))
+    # Handle on the compute running THIS job: an ECS task ARN, or "celery:<task id>" locally.
+    # Lets a stop kill the task at once, and lets the API ask ECS whether a silent job is alive.
+    # Null is fine and not a failure: the job may not be dispatched yet, and a stop is still
+    # correct without it — the run aborts at its next checkpoint (see worker/tasks.set_status).
+    task_arn: Mapped[str | None] = mapped_column(String(512))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

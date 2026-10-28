@@ -117,3 +117,84 @@ def test_full_run_succeeds_end_to_end(client, catalog, admin_token, no_enqueue, 
         assert job.status == JobStatus.succeeded
         assert job.finished_at is not None
         assert job.kit.status.value == "analysed"
+
+
+# --- A stopped run must stop working, not just stop reporting ----------------------------
+
+def test_a_stopped_run_does_not_resurrect_itself(client, catalog, admin_token, no_enqueue,
+                                                 monkeypatch, tmp_path):
+    """The hazard that makes a stop real.
+
+    A task that is still winding down would otherwise report `succeeded` after the user stopped
+    it — uploading results, ingesting genotypes and locking the kit as `analysed`, i.e. re-locking
+    the very kit the user was freeing. Here the job is stopped mid-run, exactly as the endpoint
+    does, and the run must abandon everything that follows.
+    """
+    from sqlalchemy import select
+    from app.models import ResultFile
+    from app.models.enums import KitStatus
+
+    job_id = _submit(client, admin_token)
+
+    monkeypatch.setattr(tasks, "_stage_ref", lambda ref, src, dest: open(dest, "w").close())
+    monkeypatch.setattr(tasks, "_stage_kit_csvs", lambda kit, d: ("primers.csv", "tags.csv"))
+    monkeypatch.setattr(tasks, "_stage_batches", lambda job, d: [{"sample_path": "s.xlsx"}])
+    monkeypatch.setattr(tasks, "build_input_tsv", lambda **kw: "kit_id\tsample_path\n")
+    monkeypatch.setattr(tasks.pr, "count_fastq_reads", lambda *a, **kw: 10_000_000)
+    monkeypatch.setattr(tasks.pr, "archive_logs", lambda *a, **kw: None)
+
+    uploaded: list = []
+    monkeypatch.setattr(tasks.storage, "upload_file", lambda src, key: uploaded.append(key))
+    emails: list = []
+    monkeypatch.setattr(tasks, "_safe_notify", lambda fn, *a: emails.append(fn.__name__))
+
+    result_file = tmp_path / "DIVJA240_genotypes.txt"
+    result_file.write_text("x\n")
+    monkeypatch.setattr(tasks.pr, "collect_results", lambda outdir, kit: [
+        tasks.pr.CollectedResult(ResultKind.genotypes, str(result_file), result_file.name),
+    ])
+    monkeypatch.setattr(tasks.pr, "find_result", lambda *a, **kw: None)
+
+    def stop_it_mid_run(cmd, cwd, log_path):
+        """Stand in for the user pressing Stop while Nextflow is running."""
+        open(log_path, "w").close()
+        with SessionLocal() as db:
+            job = db.get(Job, job_id)
+            job.status = JobStatus.failed
+            job.error_message = "Stopped by you at 14:32 UTC."
+            db.commit()
+
+    monkeypatch.setattr(tasks, "_run", stop_it_mid_run)
+
+    assert tasks.execute_job(job_id) == "stopped"
+
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        assert job.status == JobStatus.failed
+        assert job.error_message == "Stopped by you at 14:32 UTC.", \
+            "the user's own message must survive — not be replaced by a pipeline failure"
+        assert job.kit.status != KitStatus.analysed, \
+            "a stopped run must not lock the kit the user was trying to free"
+        assert db.scalars(select(ResultFile).where(ResultFile.job_id == job_id)).all() == []
+
+    assert uploaded == [], "a stopped run must not upload results"
+    assert "send_job_failed" not in emails, "don't email about a failure the user caused on purpose"
+    assert "send_job_succeeded" not in emails
+
+
+def test_a_stop_landing_before_the_task_starts_is_honoured(client, catalog, admin_token,
+                                                            no_enqueue, monkeypatch):
+    """Stop pressed while the job was still queued: the task boots, sees it, and does nothing."""
+    job_id = _submit(client, admin_token)
+
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        job.status = JobStatus.failed
+        job.error_message = "Stopped by you."
+        db.commit()
+
+    staged = []
+    monkeypatch.setattr(tasks, "_stage_ref", lambda *a: staged.append(a))
+
+    assert tasks.execute_job(job_id) == "already-finished"
+    assert staged == [], "a stopped job must not even stage its inputs"

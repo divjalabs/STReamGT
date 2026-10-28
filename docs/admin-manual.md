@@ -93,6 +93,15 @@ Each kit moves through four statuses:
 
 **To let a client re-run a kit:** open **Kits**, **edit** the kit, set its status to **reanalyse**, and **Save**. The client can then submit it again.
 
+**Clients can now stop their own runs.** A user who spots a mistake can press **Stop analysis** on
+the job page; the run halts and the kit stays unlocked, so they can resubmit without asking you.
+That only applies *before* an analysis finishes — a kit that reached **analysed** still needs you
+to set **reanalyse**.
+
+**A dead analysis no longer blocks a kit.** If the machine running a job disappears, the platform
+notices when anyone opens the job or the kits page and marks it failed with the reason, freeing the
+kit. The `scripts/force-fail-job.sh` script remains only as a last resort.
+
 ------------------------------------------------------------------------
 
 ## 5. Users

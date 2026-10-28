@@ -103,6 +103,20 @@ The job page updates itself automatically — no need to refresh. Your analysis 
 
 You'll also see your sample batches listed with their species and selected tags.
 
+### Stopping an analysis
+
+Spotted a mistake — the wrong sample sheet, the wrong tag columns, the wrong FASTQ? Press
+**Stop analysis** on the job page. The run halts, nothing is saved, and the kit is free to submit
+again straight away. You don't need an admin, because the kit only locks once an analysis
+*finishes*.
+
+The button disappears once the analysis reaches **uploading**: at that point it is seconds from
+done and is saving results. Let it finish, then use **Request reanalysis** if you need another run.
+
+A stopped analysis is recorded as **failed**, with a note saying you stopped it and when. You can
+reuse it with **Rerun analysis** — handy if you stopped it for a reason that has since been fixed,
+as it reuses the files you already uploaded.
+
 ### The low-read check (confirmation needed)
 
 If your uploaded FASTQ has **fewer reads than you expected** (from Step 2), the job pauses in a state called **awaiting_confirmation** instead of running. The page shows the actual read count versus your expected number and asks you to decide:
@@ -140,6 +154,10 @@ Start with **genotypes** for your results and the **html_report** to check quali
 ------------------------------------------------------------------------
 
 ## 7. Troubleshooting & FAQ
+
+**My analysis says "stopped reporting back".** The machine running it disappeared — usually a
+transient cloud problem. Nothing was saved and the kit is free again; press **Rerun analysis** to
+try the same inputs once more.
 
 **My job failed.** The job page shows an error message, and you'll get an email. Common causes are corrupted or mismatched FASTQ files, or sample sheets that don't match the data. Check your inputs and try a new analysis; if it persists, send the error text to your admin.
 

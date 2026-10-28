@@ -136,6 +136,11 @@ resource "aws_iam_role_policy" "lambda_api" {
         Action   = ["ecs:RunTask"]
         Resource = "*"
       },
+      { # stop a run the user cancelled, and notice one whose task died (api/jobs, job_health)
+        Effect   = "Allow"
+        Action   = ["ecs:StopTask", "ecs:DescribeTasks"]
+        Resource = "arn:aws:ecs:${var.region}:${var.account_id}:task/${aws_ecs_cluster.main.name}/*"
+      },
       {
         Effect   = "Allow"
         Action   = ["iam:PassRole"]

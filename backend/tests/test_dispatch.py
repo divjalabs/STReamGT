@@ -1,6 +1,11 @@
-"""enqueue_job dispatches to the right backend based on settings.run_mode."""
+"""enqueue_job dispatches to the right backend, and hands back a handle on the running job."""
 from app.config import settings
 from app.api import jobs
+
+
+class _FakeAsyncResult:
+    def __init__(self, task_id):
+        self.id = task_id
 
 
 def test_celery_mode_calls_delay(monkeypatch):
@@ -8,18 +13,29 @@ def test_celery_mode_calls_delay(monkeypatch):
     called = {}
     # patch the lazily-imported symbol on the tasks module
     import app.worker.tasks as tasks
-    monkeypatch.setattr(tasks.run_pipeline, "delay", lambda job_id: called.setdefault("delay", job_id))
-    jobs.enqueue_job(42)
+    def fake_delay(job_id):
+        called["delay"] = job_id
+        return _FakeAsyncResult("abc-123")
+
+    monkeypatch.setattr(tasks.run_pipeline, "delay", fake_delay)
+    handle = jobs.enqueue_job(42)
     assert called["delay"] == 42
+    assert handle == "celery:abc-123"
 
 
 def test_ecs_mode_launches_head_task(monkeypatch):
     monkeypatch.setattr(settings, "run_mode", "ecs")
     called = {}
     import app.services.dispatch as dispatch
-    monkeypatch.setattr(dispatch, "launch_head_task_ecs", lambda job_id: called.setdefault("ecs", job_id))
-    jobs.enqueue_job(99)
+    arn = "arn:aws:ecs:eu-central-1:123:task/streamgt/abc"
+    def fake_launch(job_id):
+        called["ecs"] = job_id
+        return arn
+
+    monkeypatch.setattr(dispatch, "launch_head_task_ecs", fake_launch)
+    handle = jobs.enqueue_job(99)
     assert called["ecs"] == 99
+    assert handle == arn, "the task handle must reach the caller so a stop can use it"
 
 
 def test_ecs_dispatch_requires_settings(monkeypatch):

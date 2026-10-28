@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, uploadFile } from "../api/client.js";
+import { isTerminal } from "../config/jobs.js";
 import SampleTable, { rowsToSampleText, filledWellCount, TOTAL_WELLS, controlPlateWarnings } from "../components/SampleTable.jsx";
 import TargetPicker from "../components/TargetPicker.jsx";
 
@@ -57,9 +58,10 @@ export default function Submit() {
     }).catch(() => setServerReads(null));
   }, [kit?.id]);
 
-  // A kit may have only one job in flight; block resubmission until it finishes.
-  const TERMINAL = ["succeeded", "failed"];
-  const kitBusy = !!kit && jobs.some((j) => j.kit_id === kit.id && !TERMINAL.includes(j.status));
+  // A kit may have only one job in flight; block resubmission until it finishes — or until the
+  // user stops it, which is why we keep the job itself and link to it.
+  const runningJob = kit ? jobs.find((j) => j.kit_id === kit.id && !isTerminal(j.status)) : null;
+  const kitBusy = Boolean(runningJob);
 
   // Position controls defined on the kit, keyed by well (drives pre-fill, colouring, warnings).
   const controlsByPos = {};
@@ -130,7 +132,8 @@ export default function Submit() {
     if (kit.status === "analysed")
       return setErr("This kit has already been analysed. Contact an admin to re-enable it (reanalyse).");
     if (kitBusy)
-      return setErr("A job for this kit is already running. Wait for it to finish before submitting again.");
+      return setErr("A job for this kit is already running. Wait for it to finish, or open that "
+                    + "analysis and stop it first.");
     setBusy(true);
     try {
       // 1. FASTQ: upload or reference.
@@ -231,8 +234,11 @@ export default function Submit() {
           {kit && kit.status === "analysed" && (
             <p className="error">⚠️ Each kit can be analysed only once. This kit is already analysed — contact an admin to re-enable it (reanalyse).</p>
           )}
-          {kit && kitBusy && (
-            <p className="error">⚠️ A job for this kit is already running. Wait for it to finish before submitting again.</p>
+          {kit && runningJob && (
+            <p className="error">
+              ⚠️ A job for this kit is already running. Wait for it to finish, or{" "}
+              <Link to={`/jobs/${runningJob.public_id}`}>open it and stop it</Link>.
+            </p>
           )}
         </section>
 

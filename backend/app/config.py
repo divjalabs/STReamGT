@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     #   "ecs"     -> API launches a one-off ECS Fargate "head" task per job (cloud-native).
     run_mode: str = "celery"
 
+    # --- Giving up on a job whose compute vanished (services/job_health.py) ---
+    # Only a fallback for jobs ECS can tell us nothing about, so both are deliberately generous:
+    # wrongly declaring a live run dead now also stops it. Real runs take minutes, not hours.
+    job_queue_timeout_min: int = 30     # queued, never started
+    job_stale_hours: int = 24           # started but silent ever since
+
     # --- ECS (run_mode="ecs"): the per-job head task ---
     ecs_cluster: str | None = None
     head_task_def: str | None = None         # task definition family[:revision]

@@ -16,6 +16,8 @@ import subprocess
 import urllib.request
 from datetime import datetime, timezone
 
+from sqlalchemy import update
+
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Job, ResultFile, ResultKind, JobStatus, FastqSource, KitStatus
@@ -25,6 +27,17 @@ from app.worker.celery_app import celery_app
 from app.worker import pipeline_run as pr
 
 log = logging.getLogger(__name__)
+
+_TERMINAL_STATUSES = {s for s in JobStatus if s.is_terminal}
+
+
+class JobStopped(Exception):
+    """The job reached a terminal state while this run was still working.
+
+    Raised when a status write matches no row — meaning somebody else finished the job, in
+    practice a user pressing Stop. Unwinds the run so it stops doing work, rather than carrying
+    on to upload results and lock the kit as analysed.
+    """
 
 
 def _now() -> datetime:
@@ -134,6 +147,11 @@ def execute_job(job_id: int) -> str:
     job = db.get(Job, job_id)
     if job is None:
         return "job-not-found"
+    if job.status.is_terminal:
+        # Stopped (or otherwise finished) before this task got going — do nothing.
+        log.info("job %s is already %s; not running it", job.public_id, job.status.value)
+        db.close()
+        return "already-finished"
     kit = job.kit
     public_id = job.public_id                       # plain values survive a closed session
     kit_code = kit.kit_code
@@ -143,19 +161,34 @@ def execute_job(job_id: int) -> str:
     final_status = None
 
     def set_status(status: JobStatus, **fields) -> None:
-        """Write the status in its own short-lived session.
+        """Advance the status, but only while the job is still unfinished.
 
-        The pipeline runs for tens of minutes between updates. Holding one session open across
-        that leaves an idle transaction, which Postgres (Neon in particular) terminates — and the
-        failure then surfaced on the *next* status write, after the work was already done.
+        Two things are going on here:
+
+        * Its own short-lived session. The pipeline runs for tens of minutes between updates, and
+          holding one session open across that leaves an idle transaction, which Postgres (Neon in
+          particular) terminates — the failure then surfacing on the next write, after the work was
+          already done.
+        * A conditional update rather than read-then-write. Whoever puts the job into a terminal
+          state owns it: a run that has been stopped must not report `succeeded` afterwards and
+          re-lock the kit. No matching row means we lost that race, so the run is unwound.
+
+        This is also the only checkpoint the run needs: `uploading` is set before any irreversible
+        work (S3 uploads, result rows, ingestion, marking the kit analysed), so a stop landing at
+        any point during the long Nextflow run is caught before results are written.
         """
         nonlocal final_status
         with SessionLocal() as s:
-            j = s.get(Job, job_id)
-            j.status = status
-            for k, v in fields.items():
-                setattr(j, k, v)
+            res = s.execute(
+                update(Job)
+                .where(Job.id == job_id, Job.status.notin_(_TERMINAL_STATUSES))
+                .values(status=status, **fields)
+            )
             s.commit()
+        if res.rowcount == 0:
+            if status.is_terminal:
+                return          # already finished — keep whatever record got there first
+            raise JobStopped("the analysis was stopped")
         final_status = status
 
     try:
@@ -266,6 +299,12 @@ def execute_job(job_id: int) -> str:
         set_status(JobStatus.succeeded, finished_at=_now())
         _safe_notify(notify.send_job_succeeded, user_email, kit_code, public_id)
         return "succeeded"
+
+    except JobStopped:
+        # A user stopped this run. Their "Stopped by you" message is already on the job, so don't
+        # overwrite it or email them about a failure they caused on purpose.
+        log.info("job %s was stopped; abandoning the run", public_id)
+        return "stopped"
 
     except Exception as exc:  # noqa: BLE001 — record any failure on the job
         # The session may itself be the casualty (a dropped connection); set_status opens its own,

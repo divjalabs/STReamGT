@@ -19,7 +19,7 @@ from app.models import (
     FastqSource,
 )
 from app.auth.deps import get_current_user
-from app.services import storage, notify
+from app.services import storage, notify, job_health
 from app.services.pipeline_params import default_parameters, merge_parameters
 from app.services.storage import DEFAULT_PART_SIZE
 from app.schemas.job import (
@@ -47,20 +47,62 @@ MULTIPART_THRESHOLD = DEFAULT_PART_SIZE
 _TERMINAL_STATUSES = {s for s in JobStatus if s.is_terminal}
 
 
-def enqueue_job(job_id: int) -> None:
-    """Dispatch the job to compute. Isolated so tests can patch it.
+# Stoppable = unfinished, except while results are being saved: that phase writes result rows,
+# uploads to S3, may ingest genotypes and then marks the kit analysed, so cutting it in half would
+# leave a mess for the sake of a few seconds.
+_STOPPABLE_STATUSES = {s for s in JobStatus if not s.is_terminal} - {JobStatus.uploading}
 
-    run_mode='ecs'    -> launch a one-off ECS Fargate head task (cloud).
+
+def enqueue_job(job_id: int) -> str | None:
+    """Dispatch the job to compute, returning a handle on it. Isolated so tests can patch it.
+
+    run_mode='ecs'    -> launch a one-off ECS Fargate head task (cloud); handle is its task ARN.
     run_mode='celery' -> enqueue to Celery/Redis for a long-running worker (local/VM).
     """
     if settings.run_mode == "ecs":
         from app.services.dispatch import launch_head_task_ecs
 
-        launch_head_task_ecs(job_id)
-    else:
-        from app.worker.tasks import run_pipeline
+        return launch_head_task_ecs(job_id)
 
-        run_pipeline.delay(job_id)
+    from app.worker.tasks import run_pipeline
+    from app.services.dispatch import CELERY_HANDLE_PREFIX
+
+    return f"{CELERY_HANDLE_PREFIX}{run_pipeline.delay(job_id).id}"
+
+
+def _dispatch(db: Session, job: Job) -> None:
+    """Hand the job to compute, and never leave it committed-but-unstarted.
+
+    The job row is written before dispatch, so a launch that raises used to leave it `queued` for
+    ever — and since a kit may have only one unfinished job, that locked the kit with no way out.
+    """
+    try:
+        handle = enqueue_job(job.id)
+    except Exception:  # noqa: BLE001 — any launch failure must still leave a usable job row
+        logger.exception("could not dispatch job %s", job.public_id)
+        db.execute(
+            update(Job)
+            .where(Job.id == job.id, Job.status.notin_(_TERMINAL_STATUSES))
+            .values(
+                status=JobStatus.failed,
+                finished_at=datetime.now(timezone.utc),
+                error_message=("Could not start the analysis — the compute service did not accept "
+                               "it. Nothing was run; please try again."),
+            )
+        )
+        db.commit()
+        db.refresh(job)
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Could not start the analysis. Please try again in a minute.",
+        )
+
+    if handle:
+        # Written straight to the row rather than through the loaded object: a stop may have
+        # landed in between, and flushing this object would write its stale status back.
+        db.execute(update(Job).where(Job.id == job.id).values(task_arn=handle))
+        db.commit()
+        db.refresh(job)
 
 
 @router.get("/parameters/defaults")
@@ -286,15 +328,17 @@ def create_job(
         )
     db.commit()
     db.refresh(job)
-    enqueue_job(job.id)
+    _dispatch(db, job)
     return job
 
 
 @router.get("", response_model=list[JobSummary])
 def list_jobs(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    return db.scalars(
+    jobs = db.scalars(
         select(Job).where(Job.user_id == current.id).order_by(Job.created_at.desc())
     ).all()
+    # Settle anything whose compute has died, so a dead job can't keep a kit locked.
+    return job_health.reconcile_all(db, list(jobs))
 
 
 def _get_owned_job(public_id: str, db: Session, current: User) -> Job:
@@ -308,7 +352,52 @@ def _get_owned_job(public_id: str, db: Session, current: User) -> Job:
 
 @router.get("/{public_id}", response_model=JobOut)
 def get_job(public_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    return _get_owned_job(public_id, db, current)
+    return job_health.reconcile(db, _get_owned_job(public_id, db, current))
+
+
+@router.post("/{public_id}/stop", response_model=JobOut)
+def stop_job(
+    public_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    """Stop a running analysis — the submitter's own escape hatch.
+
+    Spotting a mistake (wrong sample sheet, wrong tag columns) used to mean waiting for the run to
+    finish and then asking an admin to unlock the kit, because a completed run locks it. Stopping
+    early means the kit was never locked, so it can be submitted again straight away.
+
+    The stop is recorded first and the task killed afterwards: an unrecorded kill is exactly the
+    stuck-job bug this also fixes. If the kill fails, the run still aborts at its next checkpoint.
+    """
+    job = _get_owned_job(public_id, db, current)
+    stopped_by = "you" if job.user_id == current.id else "an admin"
+    when = datetime.now(timezone.utc)
+
+    res = db.execute(
+        update(Job)
+        .where(Job.id == job.id, Job.status.in_(_STOPPABLE_STATUSES))
+        .values(
+            status=JobStatus.failed,
+            finished_at=when,
+            error_message=(f"Stopped by {stopped_by} at {when:%Y-%m-%d %H:%M} UTC. "
+                           "Nothing was saved — you can submit this kit again."),
+        )
+    )
+    db.commit()
+    db.refresh(job)
+
+    if res.rowcount == 0:
+        if job.status == JobStatus.uploading:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This analysis is already saving its results — too late to stop it. It will "
+                "finish shortly; use 'Request reanalysis' if you need it run again.",
+            )
+        raise HTTPException(status.HTTP_409_CONFLICT, "This analysis has already finished.")
+
+    from app.services.dispatch import stop_compute
+
+    stop_compute(job.task_arn, reason=f"Stopped by {stopped_by} in STReamGT")
+    return job
 
 
 @router.post("/{public_id}/rerun", response_model=JobOut)
@@ -331,7 +420,7 @@ def rerun_job(
     # keep reads_confirmed as-is so a previously-confirmed low-read job doesn't re-pause
     db.commit()
     db.refresh(job)
-    enqueue_job(job.id)
+    _dispatch(db, job)
     return job
 
 
@@ -349,7 +438,7 @@ def confirm_job(
         job.status = JobStatus.queued
         job.error_message = None
         db.commit()
-        enqueue_job(job.id)
+        _dispatch(db, job)
     else:
         job.status = JobStatus.failed
         job.error_message = "Cancelled by user: insufficient reads."
