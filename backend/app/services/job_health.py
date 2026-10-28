@@ -31,6 +31,11 @@ log = logging.getLogger(__name__)
 _TERMINAL_STATUSES = {s for s in JobStatus if s.is_terminal}
 
 # The job page polls every few seconds; one ECS call per poll per viewer would be waste.
+#
+# Wall clock, deliberately, NOT time.monotonic(): on Lambda the process is frozen between
+# requests and a monotonic clock does not tick while frozen, so across a hundred polls it
+# advanced by a few seconds and this check was skipped every time — the first version of this
+# shipped that way and never noticed a dead task.
 _CHECK_INTERVAL_SECONDS = 60
 _last_checked: dict[int, float] = {}
 
@@ -85,9 +90,9 @@ def reconcile(db: Session, job: Job) -> Job:
         return job
 
     last = _last_checked.get(job.id, 0.0)
-    if time.monotonic() - last < _CHECK_INTERVAL_SECONDS:
+    if time.time() - last < _CHECK_INTERVAL_SECONDS:
         return job
-    _last_checked[job.id] = time.monotonic()
+    _last_checked[job.id] = time.time()
 
     state = dispatch.describe_task_state(job.task_arn)
     if state in ("STOPPED", "GONE"):

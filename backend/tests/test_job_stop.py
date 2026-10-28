@@ -256,3 +256,35 @@ def test_sweeping_never_unlocks_a_kit(client, catalog, admin_token, monkeypatch)
     with SessionLocal() as db:
         assert db.get(Kit, kit_id).status == KitStatus.analysed, \
             "results may exist; un-analysing a kit behind the user's back would be worse"
+
+
+def test_the_check_is_throttled_by_wall_clock_not_process_time(client, catalog, admin_token,
+                                                               monkeypatch):
+    """The throttle must survive the API being frozen between requests.
+
+    It first used time.monotonic(), which does not tick while a Lambda is frozen: across a hundred
+    polls it advanced a few seconds, so the sixty-second gate never opened and a dead task was
+    never noticed. Live proof, not theory — that version shipped.
+    """
+    from app.services import job_health
+
+    calls: list[str] = []
+    monkeypatch.setattr("app.services.job_health.dispatch.describe_task_state",
+                        lambda handle: calls.append(handle) or "RUNNING")
+    monkeypatch.setattr("app.api.jobs.enqueue_job",
+                        lambda job_id: "arn:aws:ecs:eu-central-1:123:task/streamgt/x")
+
+    kit_id = _make_kit(client, admin_token, assigned_ids=[])
+    pub = _submit(client, admin_token, kit_id)
+    _set_status(pub, "running")
+
+    client.get(f"/api/jobs/{pub}", headers=bearer(admin_token))
+    client.get(f"/api/jobs/{pub}", headers=bearer(admin_token))
+    assert len(calls) == 1, "a burst of polls must not mean a burst of ECS calls"
+
+    # Wind the recorded time back by more than the interval, as wall-clock would while frozen.
+    for job_id in list(job_health._last_checked):
+        job_health._last_checked[job_id] -= job_health._CHECK_INTERVAL_SECONDS + 1
+
+    client.get(f"/api/jobs/{pub}", headers=bearer(admin_token))
+    assert len(calls) == 2, "once the interval has passed in real time, check again"
