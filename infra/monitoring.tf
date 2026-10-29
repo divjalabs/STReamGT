@@ -308,16 +308,19 @@ resource "aws_cloudwatch_metric_alarm" "db_backup_missing" {
   namespace   = var.project
   metric_name = aws_cloudwatch_log_metric_filter.db_backup_ok.metric_transformation[0].name
 
-  statistic           = "Sum"
-  period              = 86400 # the maximum CloudWatch allows; 8 of them covers a missed Sunday
-  evaluation_periods  = 8
-  datapoints_to_alarm = 8
+  statistic = "Sum"
+  # 7 days is the longest window CloudWatch allows at this granularity (period x periods must not
+  # exceed a week). It is also exactly right: with a Sunday backup the longest normal gap is six
+  # empty days, so seven in a row means a Sunday was genuinely missed.
+  period              = 86400
+  evaluation_periods  = 7
+  datapoints_to_alarm = 7
   threshold           = 1
   comparison_operator = "LessThanThreshold"
   # The opposite of the other alarms: here the ABSENCE of data IS the failure.
   treat_missing_data = "breaching"
 
-  alarm_description = "No database backup has been uploaded for 8 days. The weekly schedule either did not fire, could not start its task, or ran and failed. Check: aws scheduler get-schedule --name streamgt-db-backup --region eu-central-1 ; aws s3 ls s3://streamgt-data-236726878099/backups/db/"
+  alarm_description = "No database backup has been uploaded for 7 days. The weekly schedule either did not fire, could not start its task, or ran and failed. Check: aws scheduler get-schedule --name streamgt-db-backup --region eu-central-1 ; aws s3 ls s3://streamgt-data-236726878099/backups/db/"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]

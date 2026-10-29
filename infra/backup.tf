@@ -42,20 +42,20 @@ resource "aws_ecs_task_definition" "dbbackup" {
 resource "aws_iam_role" "scheduler_backup" {
   name = "${var.project}-scheduler-backup"
 
+  # No Condition keys, deliberately, and this matches AWS's own documented policy for a Scheduler
+  # execution role. Adding aws:SourceAccount / aws:SourceArn — the usual confused-deputy guard —
+  # makes CreateSchedule fail with "the execution role you provide must allow AWS EventBridge
+  # Scheduler to assume the role", because that check runs before the schedule exists and without
+  # those context keys. Tried both the exact schedule ARN and a wildcard; both are rejected.
+  #
+  # What limits the blast radius instead is the policy below: this role can start exactly one task
+  # definition family in one cluster, and can pass exactly two roles, only to ECS.
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
       Principal = { Service = "scheduler.amazonaws.com" }
       Action    = "sts:AssumeRole"
-      Condition = {
-        StringEquals = { "aws:SourceAccount" = var.account_id }
-        # Written out rather than referenced: the schedule already depends on this role, so
-        # referring to it here would be a dependency cycle.
-        ArnLike = {
-          "aws:SourceArn" = "arn:aws:scheduler:${var.region}:${var.account_id}:schedule/default/${var.project}-db-backup"
-        }
-      }
     }]
   })
 }
