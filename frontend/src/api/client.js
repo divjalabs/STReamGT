@@ -87,6 +87,31 @@ async function assertDownloadable(res) {
   }
 }
 
+/**
+ * Download the kit sticker sheet. Unlike every other download here this is a POST, because the
+ * server stores only fingerprints of claim codes — it formats the rows we hand back to it.
+ */
+export async function downloadKitStickers(rows) {
+  const headers = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch("/api/kits/batch/stickers.xlsx", {
+    method: "POST", headers, body: JSON.stringify({ rows }),
+  });
+  await assertDownloadable(res);
+  const blob = await res.blob();
+  const cd = res.headers.get("Content-Disposition") || "";
+  const m = cd.match(/filename="?([^"]+)"?/);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = m ? m[1] : "kit_codes.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Fetch an authenticated binary endpoint and trigger a browser download. */
 async function downloadBlob(path, filename) {
   const headers = {};
@@ -158,6 +183,8 @@ export const api = {
   downloadBatchPlate: (publicId, batchId, filename) =>
     downloadBlob(`/jobs/${publicId}/batches/${batchId}/plate.xlsx`, filename),
   claimKit: (code) => request("/kits/claim", { method: "POST", body: { code } }),
+  createKitBatch: (payload) => request("/kits/batch", { method: "POST", body: payload }),
+  downloadKitStickers: (rows) => downloadKitStickers(rows),
   regenerateClaimCode: (id) => request(`/kits/${id}/claim-code`, { method: "POST" }),
   revokeClaim: (id) => request(`/kits/${id}/claim`, { method: "DELETE" }),
   getKitReads: (id) => request(`/kits/${id}/reads`),

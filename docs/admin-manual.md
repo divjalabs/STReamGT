@@ -59,16 +59,30 @@ A **kit** ties a kit code to a panel (species), a set of tag columns, a negative
 
 ### Register one or many kits
 
-Use the **Register kit(s)** form. You can create several kits at once that share the same configuration:
+Use the **Register kit(s)** form. Every kit in one batch shares the same configuration, and there are two ways to name them:
 
-- **Kit code(s)** — one or more codes, separated by commas or spaces (e.g. `DIVJA240, DIVJA241, DIVJA242`). Each becomes its own kit.
+- **Generate codes** (the usual way) — say how many kits you need, and the platform names them after the panel and today's date: `Bearplex_261029_01`, `_02`, and so on. Numbering restarts each day for each panel, and a second batch the same day continues from where the first stopped.
+- **Enter my own** — type codes by hand, separated by commas or spaces. Use this when a code has to match an external numbering scheme.
+
+Because the code comes from the panel's name, **name your panels the way you want kits to read** (Section 2 → **rename**). If three wolf panels should produce distinguishable kits, give the three panels distinct names. Renaming a panel later never changes codes already issued — those are printed on stickers.
+
+Then:
+
 - **Primer panel (species)** — choose from the panels you created in Section 2.
 - **Tag columns** — tick the PP columns (PP1…PP12) this kit uses. These populate the client's tag picker at submission.
 - **Negative control name pattern** — default `blank`. Any sample whose name contains this text is treated as a negative control by the analysis.
 - **Assign to users** — type a client's email in the picker and select them; add as many as needed. Assigned clients see the kit in their **My kits**.
 - **Description** — optional.
 
-Click **Register kit(s)**. If some codes fail (e.g. a duplicate code), the page reports which ones so you can fix and retry just those.
+Click **Register kit(s)**. A generated batch is all-or-nothing: if anything is rejected, no kits are created, so the codes you print always match what exists. (Typing codes by hand still reports individual failures, since each is registered separately.)
+
+### The claim codes, and the sticker sheet
+
+After registering, the page shows each kit's **claim code** — the code whoever receives the kit types in to unlock it. **This is the only time those codes exist.** The platform stores only a fingerprint of each one, so the list cannot be shown again; if it is lost, the only remedy is generating new codes, which kills any sticker already printed.
+
+So the first thing to do is **⭳ Download for printing** — a spreadsheet with one row per kit: kit code, claim code, species, panel, the date, and an empty **Sent to** column for whoever packs the boxes. The page warns you if you try to close it before downloading.
+
+If a code really is lost, open **Kits**, find the row and click **code** to issue a new one. The old code stops working immediately, so the kit needs a new sticker.
 
 ### Edit or delete a kit
 

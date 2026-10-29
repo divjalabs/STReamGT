@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client.js";
+import ClaimCodesCard from "../../components/ClaimCodesCard.jsx";
 import AssigneePicker from "../../components/AssigneePicker.jsx";
 
 const STATUSES = ["sent", "received", "analysed", "reanalyse"];
@@ -27,7 +28,14 @@ export default function AdminKits() {
   const emailFor = (id) => users.find((u) => u.id === id)?.email || `#${id}`;
 
   const regenCode = async (id) => {
-    try { const k = await api.regenerateClaimCode(id); setNewCodes([{ kit_code: k.kit_code, claim_code: k.claim_code }]); }
+    try {
+      const k = await api.regenerateClaimCode(id);
+      setNewCodes((prev) => [
+        ...prev.filter((c) => c.kit_code !== k.kit_code),
+        { kit_code: k.kit_code, claim_code: k.claim_code, species: k.species,
+          panel: k.panel?.code, registered: new Date().toISOString().slice(0, 10) },
+      ]);
+    }
     catch (e) { setErr(e.message); }
   };
 
@@ -58,27 +66,7 @@ export default function AdminKits() {
       </div>
       {err && <p className="error">{err}</p>}
 
-      {newCodes.length > 0 && (
-        <section className="card claim-codes-card">
-          <div className="row">
-            <b>Claim code{newCodes.length > 1 ? "s" : ""} — copy now, shown only once</b>
-            <span className="spacer" />
-            <button type="button" className="link" onClick={() => setNewCodes([])}>dismiss</button>
-          </div>
-          <p className="muted small">Ship each code with its kit. The buyer redeems it to unlock the kit — no admin step.</p>
-          <table className="table">
-            <tbody>
-              {newCodes.map((c) => (
-                <tr key={c.kit_code}>
-                  <td>{c.kit_code}</td>
-                  <td className="mono"><b>{c.claim_code}</b></td>
-                  <td><button type="button" className="linkish" onClick={() => navigator.clipboard?.writeText(c.claim_code)}>copy</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+      <ClaimCodesCard rows={newCodes} onDismiss={() => setNewCodes([])} />
 
       <h2>All kits <span className="muted">({kits.length})</span></h2>
       <table className="table">

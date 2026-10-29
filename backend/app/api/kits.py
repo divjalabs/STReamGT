@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -15,12 +17,14 @@ from app.models import (
 from app.auth.deps import get_current_user, require_admin
 from app.schemas.kit import (
     KitCreate, KitUpdate, KitOut, KitSummary, KitReadsIn, KitReadsOut, ClaimRequest,
+    KitBatchCreate, KitBatchOut, KitStickerRow, KitStickerSheetRequest,
 )
 from app.schemas.panel import TagLayoutOut
 from app.services import storage
 from app.services.kit_files import parse_tag_columns
 from app.services.kit_reads import set_kit_reads
 from app.services import claim_codes
+from app.services import kit_codes
 from app.services import ratelimit
 
 router = APIRouter(prefix="/kits", tags=["kits"])
@@ -279,6 +283,100 @@ def create_kit(payload: KitCreate, db: Session = Depends(get_db), admin: User = 
     db.refresh(kit)
     kit.claim_code = code                     # transient — serialized in KitOut this once only
     return kit
+
+
+@router.post("/batch", response_model=KitBatchOut, status_code=status.HTTP_201_CREATED)
+def create_kit_batch(
+    payload: KitBatchCreate, db: Session = Depends(get_db), admin: User = Depends(require_admin),
+):
+    """Register a consignment of kits in one go, naming them after the panel and today's date.
+
+    All or nothing: one transaction, one commit. A partial batch would leave the printed sticker
+    sheet disagreeing with the database, which is worse than registering none.
+
+    The response carries each kit's claim code in plaintext. That is the only time it exists —
+    only a keyed hash is stored — so the caller must keep it or regenerate, which invalidates any
+    sticker already printed.
+    """
+    panel = db.get(PrimerPanel, payload.panel_id)
+    if panel is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Primer panel not found")
+
+    layout = _global_tag_layout(db)
+    unknown = set(payload.selected_tags) - set(layout.column_names)
+    if unknown:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"tag columns not in the layout: {sorted(unknown)}",
+        )
+
+    codes = kit_codes.next_codes(db, panel.code, payload.count)
+    too_long = kit_codes.check_length(codes)
+    if too_long:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, too_long)
+
+    assigned = list(db.scalars(select(User).where(User.id.in_(payload.assigned_user_ids))).all())
+
+    rows: list[KitStickerRow] = []
+    registered = date.today().isoformat()
+    for kit_code in codes:
+        kit = Kit(
+            kit_code=kit_code,
+            panel_id=panel.id,
+            species=panel.species_common,
+            description=payload.description,
+            status=payload.status,
+            primers_csv_key=panel.primers_csv_key,
+            tags_csv_key=layout.tags_csv_key,
+            created_by=admin.id,
+            tag_columns=[TagColumn(name=t, ordinal=_pp_ordinal(t)) for t in payload.selected_tags],
+            # Re-resolved per kit: control wells are named after the kit they belong to.
+            controls=_build_controls(kit_code, payload.controls),
+            users=list(assigned),
+        )
+        plaintext = claim_codes.assign_new_code(kit)
+        db.add(kit)
+        rows.append(KitStickerRow(
+            kit_code=kit_code, claim_code=plaintext,
+            species=panel.species_common, panel=panel.code, registered=registered,
+        ))
+
+    try:
+        db.commit()
+    except IntegrityError:
+        # Another batch for the same panel landed between picking the numbers and committing.
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Another batch was registered at the same moment and took these codes. "
+            "Nothing was created — please try again.",
+        )
+
+    return KitBatchOut(
+        kits=rows, panel=panel.code, species=panel.species_common, registered=registered,
+    )
+
+
+@router.post("/batch/stickers.xlsx")
+def kit_batch_sticker_sheet(
+    payload: KitStickerSheetRequest, _: User = Depends(require_admin),
+):
+    """Format a batch's codes as the spreadsheet the lab prints stickers from.
+
+    A POST, and it echoes back what it is given, because the server cannot look these up: claim
+    codes are stored only as hashes. This exists so the workbook is built in one place rather than
+    assembled in the browser.
+    """
+    from app.services.kit_stickers import build_sticker_sheet
+
+    data = build_sticker_sheet([r.model_dump() for r in payload.rows])
+    first = payload.rows[0]
+    name = f"{first.panel or 'kits'}_{(first.registered or '').replace('-', '')}_codes.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
 
 
 # ---------- claim codes (self-service kit access) ----------

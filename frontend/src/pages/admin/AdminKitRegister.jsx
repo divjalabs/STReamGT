@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import ControlPlate from "../../components/ControlPlate.jsx";
 import AssigneePicker from "../../components/AssigneePicker.jsx";
+import ClaimCodesCard from "../../components/ClaimCodesCard.jsx";
 
 export default function AdminKitRegister() {
   const [panels, setPanels] = useState([]);
@@ -13,6 +14,10 @@ export default function AdminKitRegister() {
   const [busy, setBusy] = useState(false);
 
   // create form
+  // "generate": the server names the kits <panel>_<YYMMDD>_<NN>; "enter": type your own codes,
+  // kept for one-offs and codes that have to match an external numbering scheme.
+  const [mode, setMode] = useState("generate");
+  const [count, setCount] = useState(10);
   const [codes, setCodes] = useState("");
   const [panelId, setPanelId] = useState("");
   const [tags, setTags] = useState([]);
@@ -54,13 +59,22 @@ export default function AdminKitRegister() {
     } catch (e) { setErr(e.message); }
   };
 
+  // Mirrors the server's format (services/kit_codes.py); for preview only — the real numbering
+  // continues from whatever already exists for that panel today.
+  const panelCode = panels.find((p) => String(p.id) === String(panelId))?.code;
+  const codePreview = panelCode
+    ? `${panelCode}_${new Date().toISOString().slice(2, 10).replace(/-/g, "")}_01`
+    : "";
+
   const toggleTag = (name) => setTags(tags.includes(name) ? tags.filter((t) => t !== name) : [...tags, name]);
 
   const submit = async (e) => {
     e.preventDefault();
     setErr(null);
     const codeList = codes.split(/[\s,]+/).map((c) => c.trim()).filter(Boolean);
-    if (codeList.length === 0) return setErr("Enter at least one kit code.");
+    if (mode === "enter" && codeList.length === 0) return setErr("Enter at least one kit code.");
+    if (mode === "generate" && (!count || count < 1))
+      return setErr("How many kits should be registered?");
     if (!panelId) return setErr("Choose a primer panel.");
     if (tags.length === 0) return setErr("Select at least one tag column.");
     setBusy(true);
@@ -76,6 +90,26 @@ export default function AdminKitRegister() {
       assigned_user_ids: assignees,
       description: description || null,
     };
+    const reset = () => {
+      setCodes(""); setPanelId(""); setTags([]); setAssignees([]); setDescription("");
+      setControls([]);
+    };
+
+    if (mode === "generate") {
+      // One request, one transaction: a half-created batch would leave the printed sheet
+      // disagreeing with what actually exists.
+      try {
+        const batch = await api.createKitBatch({ count: Number(count), ...base });
+        setNewCodes(batch.kits);
+        reset();
+      } catch (e) {
+        setErr(e.message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     const failed = [];
     const created = [];
     for (const code of codeList) {
@@ -85,7 +119,7 @@ export default function AdminKitRegister() {
     setBusy(false);
     setNewCodes(created.map((k) => ({ kit_code: k.kit_code, claim_code: k.claim_code })));
     if (failed.length) setErr("Some kits failed — " + failed.join(" | "));
-    else { setCodes(""); setPanelId(""); setTags([]); setAssignees([]); setDescription(""); setControls([]); }
+    else reset();
   };
 
   return (
@@ -99,9 +133,26 @@ export default function AdminKitRegister() {
 
       <section className="card">
         <form onSubmit={submit}>
-          <label>Kit code(s) <span className="muted">— one or more, comma or space separated (all share the fields below)</span>
-            <input value={codes} onChange={(e) => setCodes(e.target.value)} required placeholder="DIVJA240, DIVJA241, DIVJA242" />
-          </label>
+          <div className="tabs">
+            <button type="button" className={mode === "generate" ? "active" : ""}
+                    onClick={() => setMode("generate")}>Generate codes</button>
+            <button type="button" className={mode === "enter" ? "active" : ""}
+                    onClick={() => setMode("enter")}>Enter my own</button>
+          </div>
+
+          {mode === "generate" ? (
+            <label>How many kits?
+              <input type="number" min="1" max="200" value={count}
+                     onChange={(e) => setCount(e.target.value)} required style={{ maxWidth: "8rem" }} />
+              <span className="muted small">
+                {" "}Named after the panel and today's date — e.g. {codePreview}
+              </span>
+            </label>
+          ) : (
+            <label>Kit code(s) <span className="muted">— one or more, comma or space separated (all share the fields below)</span>
+              <input value={codes} onChange={(e) => setCodes(e.target.value)} required placeholder="DIVJA240, DIVJA241, DIVJA242" />
+            </label>
+          )}
           <label>Primer panel (species)
             <select value={panelId} onChange={(e) => setPanelId(e.target.value)} required>
               <option value="">— choose a panel —</option>
@@ -137,7 +188,7 @@ export default function AdminKitRegister() {
               <button type="button" className="secondary" onClick={saveTemplate}>Save positions as template</button>
               <span className="muted small">Names auto-generate as {"{kit}_{type}_{well}"} unless set.</span>
             </div>
-            <ControlPlate value={controls} onChange={setControls} kitCode={codes.split(/[\s,]+/)[0] || "KIT"} />
+            <ControlPlate value={controls} onChange={setControls} kitCode={mode === "generate" ? (codePreview || "KIT") : (codes.split(/[\s,]+/)[0] || "KIT")} />
           </fieldset>
           <fieldset>
             <legend>Assign to users</legend>
@@ -151,26 +202,7 @@ export default function AdminKitRegister() {
       </section>
 
       {newCodes.length > 0 && (
-        <section className="card claim-codes-card">
-          <div className="row">
-            <b>Claim code{newCodes.length > 1 ? "s" : ""} — copy now, shown only once</b>
-            <span className="spacer" />
-            <button type="button" className="link" onClick={() => setNewCodes([])}>dismiss</button>
-          </div>
-          <p className="muted small">Ship each code with its kit. The buyer redeems it to unlock the kit — no admin step.</p>
-          <table className="table">
-            <tbody>
-              {newCodes.map((c) => (
-                <tr key={c.kit_code}>
-                  <td>{c.kit_code}</td>
-                  <td className="mono"><b>{c.claim_code}</b></td>
-                  <td><button type="button" className="linkish" onClick={() => navigator.clipboard?.writeText(c.claim_code)}>copy</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p><Link to="/admin/kits" className="link">← Back to kits</Link></p>
-        </section>
+        <ClaimCodesCard rows={newCodes} onDismiss={() => setNewCodes([])} />
       )}
     </div>
   );

@@ -59,6 +59,47 @@ class KitCreate(BaseModel):
     assigned_user_ids: list[int] = []
 
 
+class KitBatchCreate(BaseModel):
+    """Register several kits at once; the server names them `<panel>_<YYMMDD>_<NN>`.
+
+    Everything except `count` is shared by the whole batch — which is how the register form has
+    always worked, one kit at a time.
+    """
+
+    panel_id: int
+    count: int = Field(ge=1, le=200, description="how many kits to register")
+    selected_tags: list[str] = Field(min_length=1, examples=[["PP1", "PP2", "PP3", "PP4"]])
+    controls: list[ControlIn] = Field(default_factory=_default_controls)
+    description: str | None = None
+    status: KitStatus = KitStatus.sent
+    assigned_user_ids: list[int] = []
+
+
+class KitStickerRow(BaseModel):
+    """One printed sticker: what identifies the kit, and the code the lab redeems."""
+
+    kit_code: str
+    claim_code: str
+    species: str | None = None
+    panel: str | None = None
+    registered: str | None = None
+
+
+class KitBatchOut(BaseModel):
+    """The claim codes are in here and nowhere else — only their hashes are stored."""
+
+    kits: list[KitStickerRow]
+    panel: str
+    species: str | None = None
+    registered: str
+
+
+class KitStickerSheetRequest(BaseModel):
+    """Rows to format as .xlsx. Sent back to the server because it cannot look them up again."""
+
+    rows: list[KitStickerRow] = Field(min_length=1, max_length=500)
+
+
 class KitUpdate(BaseModel):
     """Admin edits status/description/access; a client may only set status=received on their kit."""
 
