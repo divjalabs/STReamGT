@@ -42,11 +42,23 @@ def _normalize(code: str) -> str:
     return "".join(ch for ch in code.upper() if ch.isalnum())
 
 
+def _key() -> bytes:
+    """The secret these codes are keyed with.
+
+    Deliberately NOT secret_key, which signs logins: the two have opposite rotation costs. A new
+    secret_key costs everyone a re-login; a new claim-code key destroys every unredeemed code on
+    kits already in the post, since only the hash is stored and it cannot be reversed. Keeping
+    them apart means an urgent login-key rotation never touches the kits.
+
+    Falls back to secret_key so local development needs no extra setup; production refuses to
+    start without its own value (see config._assert_usable_in_production).
+    """
+    return (settings.claim_code_key or settings.secret_key).encode()
+
+
 def hmac_code(code: str) -> str:
     """Keyed HMAC of a (normalized) code — what we store and look up by."""
-    return hmac.new(
-        settings.secret_key.encode(), _normalize(code).encode(), sha256
-    ).hexdigest()
+    return hmac.new(_key(), _normalize(code).encode(), sha256).hexdigest()
 
 
 def redeem(db: Session, user: User, code: str) -> Kit:

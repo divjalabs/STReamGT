@@ -18,7 +18,15 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:5173"
 
     # --- Security ---
+    # Signs login tokens and password-reset links. Rotating it logs everyone out, and nothing else
+    # — kit claim codes have their own key below, deliberately.
     secret_key: str = "change-me-in-prod"
+    # Signs kit claim codes, and only those. Separate because the two have opposite rotation
+    # costs: a new secret_key costs a re-login, while a new claim-code key destroys every
+    # unredeemed code on kits already posted to labs (only the hash is stored, so it cannot be
+    # undone). Seeded with secret_key's value when the split was introduced, so existing codes
+    # kept working. Falls back to secret_key outside production, so local dev needs no setup.
+    claim_code_key: str | None = None
     access_token_expire_minutes: int = 60 * 24  # 1 day
     reset_token_expire_minutes: int = 60         # password-reset links expire in 1h
     jwt_algorithm: str = "HS256"
@@ -119,15 +127,52 @@ def _load_ssm_parameters() -> None:
     import boto3
 
     ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "eu-central-1"))
+    found = 0
     for page in ssm.get_paginator("get_parameters_by_path").paginate(Path=path, WithDecryption=True):
         for p in page["Parameters"]:
             os.environ.setdefault(p["Name"].rsplit("/", 1)[-1], p["Value"])
+            found += 1
+    if not found:
+        # A renamed or mistyped path looks exactly like this: no error, no parameters, and every
+        # setting silently falling back to its default. A permissions failure already raises.
+        raise RuntimeError(
+            f"SSM_PARAMETER_PATH={path!r} returned no parameters — the path is probably wrong. "
+            "Refusing to start on default settings."
+        )
+
+
+def _assert_usable_in_production(settings: "Settings") -> None:
+    """Refuse to start rather than run on a secret anybody can read.
+
+    `secret_key`'s default is a placeholder committed to a public repository. If the real value
+    ever failed to arrive — a renamed parameter, an edited function configuration, a copy of the
+    deployment made without it — the app would otherwise start happily and sign logins with a key
+    from GitHub, with no error anywhere. Failing at startup means the container never serves a
+    request and the rollout stops, while somebody can still fix it.
+    """
+    if settings.environment == "development":
+        return
+
+    problems = []
+    if settings.secret_key == Settings.model_fields["secret_key"].default:
+        problems.append("SECRET_KEY is still the placeholder from the repository")
+    if not settings.claim_code_key:
+        problems.append("CLAIM_CODE_KEY is not set")
+    if problems:
+        raise RuntimeError(
+            f"refusing to start in environment={settings.environment!r}: "
+            + "; ".join(problems)
+            + ". Set them under SSM_PARAMETER_PATH (e.g. /streamgt/SECRET_KEY), or set "
+            "ENVIRONMENT=development for local use."
+        )
 
 
 @lru_cache
 def get_settings() -> Settings:
     _load_ssm_parameters()
-    return Settings()
+    settings = Settings()
+    _assert_usable_in_production(settings)
+    return settings
 
 
 settings = get_settings()

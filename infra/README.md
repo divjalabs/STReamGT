@@ -18,8 +18,24 @@ so their values never enter Terraform state. The parameter name is the env var n
 | Parameter | Value |
 |---|---|
 | `/streamgt/DATABASE_URL` | `postgresql+psycopg://<user>:<pwd>@<neon-host>/streamgt?sslmode=require` |
-| `/streamgt/SECRET_KEY` | JWT signing key |
+| `/streamgt/SECRET_KEY` | Signs login tokens and password-reset links |
+| `/streamgt/CLAIM_CODE_KEY` | Signs kit claim codes — **only** those |
 | `/streamgt/SMTP_USER`, `/streamgt/SMTP_PASSWORD` | SES SMTP credentials |
+
+**Why the two signing keys are separate, and what rotating each costs:**
+
+| Rotate | Cost |
+|---|---|
+| `SECRET_KEY` | Everyone is logged out and outstanding password-reset links stop working. That's all. |
+| `CLAIM_CODE_KEY` | **Every unredeemed claim code dies.** Only the hash is stored, so the codes printed on kits already posted to labs can never be recovered — each kit needs a new code and each lab needs telling. |
+
+They were one key until October 2026, which meant the first row silently cost the second. The new
+parameter was seeded with `SECRET_KEY`'s exact value so existing codes kept working.
+
+The API **refuses to start** in a non-development environment if `SECRET_KEY` is still the
+placeholder from the repository, if `CLAIM_CODE_KEY` is missing, or if the parameter path returns
+nothing at all — all three used to be silent, and the first means signing logins with a key that
+is public on GitHub.
 
 ```bash
 aws ssm put-parameter --name /streamgt/DATABASE_URL --type SecureString --overwrite --value '...'

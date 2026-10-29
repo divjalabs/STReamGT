@@ -93,6 +93,12 @@ Each kit moves through four statuses:
 
 **To let a client re-run a kit:** open **Kits**, **edit** the kit, set its status to **reanalyse**, and **Save**. The client can then submit it again.
 
+**Claim codes and the platform's keys.** A kit's claim code is stored only as a fingerprint, never
+as text — which is why the code is shown once at registration and cannot be looked up later. If a
+code is lost, regenerate it on the **Kits** page; the old one stops working immediately. The key
+that signs these codes is kept separate from the one that signs logins, so a security rotation of
+the login key cannot invalidate codes on kits already in the post.
+
 **Clients can now stop their own runs.** A user who spots a mistake can press **Stop analysis** on
 the job page; the run halts and the kit stays unlocked, so they can resubmit without asking you.
 That only applies *before* an analysis finishes — a kit that reached **analysed** still needs you

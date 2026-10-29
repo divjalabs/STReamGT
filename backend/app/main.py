@@ -67,6 +67,8 @@ def api_health(deep: bool = False) -> dict:
         checks["pipeline_parameters"] = f"error: {type(exc).__name__}"
 
     checks["secret_key"] = "default" if settings.secret_key == "change-me-in-prod" else "configured"
+    # Its absence would silently fall back to secret_key, re-coupling kit codes to login rotation.
+    checks["claim_code_key"] = "configured" if settings.claim_code_key else "missing"
 
     out["checks"] = checks
     out["status"] = "ok" if all(v in ("ok", "configured") for v in checks.values()) else "degraded"
