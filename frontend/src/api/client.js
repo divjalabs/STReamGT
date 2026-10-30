@@ -183,6 +183,8 @@ export const api = {
   downloadBatchPlate: (publicId, batchId, filename) =>
     downloadBlob(`/jobs/${publicId}/batches/${batchId}/plate.xlsx`, filename),
   claimKit: (code) => request("/kits/claim", { method: "POST", body: { code } }),
+  downloadKitExport: () =>
+    downloadBlob("/kits/export.xlsx", `streamgt_kits_${new Date().toISOString().slice(0, 10)}.xlsx`),
   createKitBatch: (payload) => request("/kits/batch", { method: "POST", body: payload }),
   downloadKitStickers: (rows) => downloadKitStickers(rows),
   regenerateClaimCode: (id) => request(`/kits/${id}/claim-code`, { method: "POST" }),

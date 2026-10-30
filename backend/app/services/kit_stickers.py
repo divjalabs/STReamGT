@@ -47,3 +47,45 @@ def build_sticker_sheet(rows: list[dict]) -> bytes:
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+INVENTORY_HEADERS = [
+    "Kit code", "Species", "Panel", "Tag columns", "Status", "Claimed by", "Registered",
+    "Description",
+]
+_INVENTORY_WIDTHS = [26, 20, 20, 24, 12, 28, 13, 40]
+
+
+def build_kit_inventory(kits) -> bytes:
+    """Every kit as a table: what exists, who holds it, and where it has got to.
+
+    Deliberately without claim codes. They are stored as keyed hashes, so they cannot appear
+    here — and a kit's code is only secret until it is redeemed anyway. The sticker sheet
+    (build_sticker_sheet) is the one place they ever appear, at the moment of registration.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "kits"
+
+    for i, header in enumerate(INVENTORY_HEADERS, start=1):
+        cell = ws.cell(row=1, column=i, value=header)
+        cell.font = Font(bold=True)
+        cell.fill = _HEADER_FILL
+        ws.column_dimensions[cell.column_letter].width = _INVENTORY_WIDTHS[i - 1]
+
+    for r, kit in enumerate(kits, start=2):
+        ws.cell(row=r, column=1, value=kit.kit_code).font = Font(bold=True)
+        ws.cell(row=r, column=2, value=kit.species)
+        ws.cell(row=r, column=3, value=kit.panel.code if kit.panel else None)
+        ws.cell(row=r, column=4, value=", ".join(t.name for t in kit.tag_columns))
+        ws.cell(row=r, column=5, value=kit.status.value)
+        ws.cell(row=r, column=6, value=kit.claimed_by_email)
+        ws.cell(row=r, column=7, value=kit.created_at.date().isoformat() if kit.created_at else None)
+        ws.cell(row=r, column=8, value=kit.description)
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{ws.cell(row=1, column=len(INVENTORY_HEADERS)).column_letter}{ws.max_row}"
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

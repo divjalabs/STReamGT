@@ -128,7 +128,11 @@ async def upload_tag_layout(
 def list_kits(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """Admins see all kits; non-admins see only kits granted to them."""
     from sqlalchemy.orm import selectinload
-    stmt = select(Kit).options(selectinload(Kit.reads)).order_by(Kit.kit_code)
+    stmt = (
+        select(Kit)
+        .options(selectinload(Kit.reads), selectinload(Kit.panel))
+        .order_by(Kit.kit_code)
+    )
     if not current.is_admin:
         stmt = stmt.join(kit_access, kit_access.c.kit_id == Kit.id).where(
             kit_access.c.user_id == current.id
@@ -149,8 +153,35 @@ def list_kits(db: Session = Depends(get_db), current: User = Depends(get_current
             by_kit[kid].append(KitStudyRef(id=sid, name=sname, project_id=pid, population_id=popid))
     for k in kits:
         k.studies = by_kit.get(k.id, [])   # transient attr read by KitSummary
+        k.panel_code = k.panel.code if k.panel else None
     _attach_claim_emails(db, list(kits))
     return kits
+
+
+@router.get("/export.xlsx")
+def export_kits(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Every kit as a spreadsheet: what exists, who holds it, and where it has got to.
+
+    Without claim codes — those are stored only as hashes, and the sticker sheet at registration
+    is the one place they ever appear.
+    """
+    from sqlalchemy.orm import selectinload
+    from app.services.kit_stickers import build_kit_inventory
+
+    kits = list(db.scalars(
+        select(Kit)
+        .options(selectinload(Kit.panel), selectinload(Kit.tag_columns))
+        .order_by(Kit.kit_code)
+    ).all())
+    _attach_claim_emails(db, kits)
+
+    data = build_kit_inventory(kits)
+    name = f"streamgt_kits_{date.today():%Y%m%d}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
 
 
 @router.get("/{kit_id}/control-template.xlsx")

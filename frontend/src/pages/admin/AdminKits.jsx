@@ -16,6 +16,10 @@ export default function AdminKits() {
   const [newCodes, setNewCodes] = useState([]);
 
   // row editing
+  // Sorting is client-side: the whole list is already loaded, and a lab's kit count stays in
+  // the hundreds.
+  const [sort, setSort] = useState({ key: "kit_code", dir: "asc" });
+  const [exporting, setExporting] = useState(false);
   const [editId, setEditId] = useState(null);
   const [edit, setEdit] = useState({ status: "sent", assigned_user_ids: [] });
 
@@ -24,6 +28,46 @@ export default function AdminKits() {
     load();
     api.listUsers().then(setUsers).catch((e) => setErr(e.message));
   }, []);
+
+  const exportKits = async () => {
+    setExporting(true); setErr(null);
+    try {
+      // Without claim codes: those are hashed, and only the sticker sheet at registration has them.
+      await api.downloadKitExport();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const SORT_VALUE = {
+    kit_code: (k) => k.kit_code || "",
+    species: (k) => k.species || "",
+    panel_code: (k) => k.panel_code || "",
+    tags: (k) => k.tag_columns.map((t) => t.name).join(","),
+    claimed_by_email: (k) => k.claimed_by_email || "",
+    status: (k) => k.status || "",
+    created_at: (k) => k.created_at || "",
+  };
+
+  const sorted = [...(kits || [])].sort((a, b) => {
+    const get = SORT_VALUE[sort.key] || SORT_VALUE.kit_code;
+    // numeric:true so Bearplex_261029_9 sorts before _10 rather than after it.
+    const cmp = String(get(a)).localeCompare(String(get(b)), undefined, { numeric: true });
+    return sort.dir === "asc" ? cmp : -cmp;
+  });
+
+  const sortBy = (key) =>
+    setSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
+
+  const Th = ({ label, k }) => (
+    <th>
+      <button type="button" className="linkish" onClick={() => sortBy(k)}>
+        {label}{sort.key === k ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
+      </button>
+    </th>
+  );
 
   const emailFor = (id) => users.find((u) => u.id === id)?.email || `#${id}`;
 
@@ -62,6 +106,9 @@ export default function AdminKits() {
       <div className="row">
         <h1>Kits (admin)</h1>
         <span className="spacer" />
+        <button className="secondary" onClick={exportKits} disabled={exporting}>
+          {exporting ? "Preparing…" : "⭳ Export kits (.xlsx)"}
+        </button>{" "}
         <Link to="/admin/kits/new"><button>＋ Register kit(s)</button></Link>
       </div>
       {err && <p className="error">{err}</p>}
@@ -71,21 +118,33 @@ export default function AdminKits() {
       <h2>All kits <span className="muted">({kits.length})</span></h2>
       <table className="table">
         <thead>
-          <tr><th>Kit</th><th>Species</th><th>Tags</th><th>Assigned to</th><th>Claimed by</th><th>Status</th><th></th></tr>
+          <tr>
+            <Th label="Kit" k="kit_code" />
+            <Th label="Species" k="species" />
+            <Th label="Panel" k="panel_code" />
+            <Th label="Tags" k="tags" />
+            <Th label="Claimed by" k="claimed_by_email" />
+            <Th label="Status" k="status" />
+            <Th label="Registered" k="created_at" />
+            <th></th>
+          </tr>
         </thead>
         <tbody>
-          {kits.map((k) => editId === k.id ? (
+          {sorted.map((k) => editId === k.id ? (
             <tr key={k.id}>
               <td>{k.kit_code}</td>
               <td>{k.species || "—"}</td>
+              <td className="muted">{k.panel_code || "—"}</td>
               <td className="muted">{k.tag_columns.map((t) => t.name).join(", ")}</td>
-              <td><AssigneePicker users={users} value={edit.assigned_user_ids}
-                    onChange={(v) => setEdit({ ...edit, assigned_user_ids: v })} /></td>
               <td className="muted">{k.claimed_by_email || "—"}</td>
               <td>
                 <select value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}>
                   {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
+              </td>
+              <td className="muted small">
+                <AssigneePicker users={users} value={edit.assigned_user_ids}
+                  onChange={(v) => setEdit({ ...edit, assigned_user_ids: v })} />
               </td>
               <td>
                 <button className="secondary" onClick={() => saveEdit(k.id)}>Save</button>{" "}
@@ -99,10 +158,11 @@ export default function AdminKits() {
                 {k.description && <div className="muted small">{k.description}</div>}
               </td>
               <td>{k.species || "—"}</td>
+              <td className="muted">{k.panel_code || "—"}</td>
               <td className="muted">{k.tag_columns.map((t) => t.name).join(", ")}</td>
-              <td className="muted">{k.assigned_user_ids.map(emailFor).join(", ") || "—"}</td>
               <td className="muted">{k.claimed_by_email || "unclaimed"}</td>
               <td><span className={`badge ${STATUS_CLASS[k.status] || ""}`}>{k.status}</span></td>
+              <td className="muted small">{k.created_at ? k.created_at.slice(0, 10) : "—"}</td>
               <td>
                 <button className="secondary" onClick={() => startEdit(k)}>edit</button>{" "}
                 <button className="linkish" onClick={() => regenCode(k.id)}>code</button>{" "}

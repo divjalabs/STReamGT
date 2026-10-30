@@ -84,11 +84,20 @@ So the first thing to do is **⭳ Download for printing** — a spreadsheet with
 
 If a code really is lost, open **Kits**, find the row and click **code** to issue a new one. The old code stops working immediately, so the kit needs a new sticker.
 
+### Finding a kit, and exporting the list
+
+Every column in **All kits** sorts — click a heading, click again to reverse. The table shows the
+kit code, species, panel, tag columns, who claimed it, its status and when it was registered.
+
+**⭳ Export kits (.xlsx)** downloads the whole list as a spreadsheet, with a filter row ready for
+sorting and filtering in Excel. It does *not* contain claim codes: those are stored only as
+fingerprints, and the sticker sheet produced at registration is the one place they appear.
+
 ### Edit or delete a kit
 
 In the **All kits** table, click **edit** on a row to change its **status** and its **assigned users**, then **Save**. Use **delete** to remove a kit.
 
-Reassigning is done here: add or remove users in the assignee picker while editing a row.
+Assigning a user is no longer the usual way kits reach people — they claim them with the code shipped in the box, which is why the table shows **Claimed by** rather than a list of assignees. The assignee picker is still there while editing a row, for granting someone access to a kit they did not claim.
 
 ------------------------------------------------------------------------
 

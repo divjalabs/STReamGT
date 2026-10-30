@@ -157,6 +157,8 @@ class KitSummary(BaseModel):
     controls: list[ControlOut] = []      # control layout (positions/types) for the submit plate
     reads: KitReadsBrief | None = None   # current server-side FASTQ pair, if any
     claimed_by_email: str | None = None  # who redeemed this kit's code (None = unclaimed); admin view
+    panel_code: str | None = None        # for the admin table's panel column and sorting
+    created_at: datetime | None = None   # when it was registered
     assigned_user_ids: list[int]
     studies: list[KitStudyRef] = []      # studies this kit is attached to (transient; see api/kits)
 

@@ -159,3 +159,29 @@ def test_sticker_sheet_has_a_row_per_kit(client, catalog, admin_token):
 def _count_kits() -> int:
     with SessionLocal() as db:
         return len(db.scalars(select(Kit)).all())
+
+
+# --- the kit inventory export ------------------------------------------------------------
+
+def test_kit_export_lists_every_kit_without_claim_codes(client, catalog, admin_token):
+    batch = _batch(client, admin_token, count=2).json()
+    r = client.get("/api/kits/export.xlsx", headers=bearer(admin_token))
+    assert r.status_code == 200
+    assert "spreadsheet" in r.headers["content-type"]
+
+    ws = load_workbook(io.BytesIO(r.content)).active
+    headers = [c.value for c in ws[1]]
+    assert headers[:3] == ["Kit code", "Species", "Panel"]
+    assert "Claim code" not in headers, "claim codes are hashed — they cannot appear here"
+
+    codes = {ws.cell(row=r_, column=1).value for r_ in range(2, ws.max_row + 1)}
+    assert {k["kit_code"] for k in batch["kits"]} <= codes
+
+    # And no claim code leaked into any cell.
+    plaintexts = {k["claim_code"] for k in batch["kits"]}
+    all_cells = {str(c.value) for row in ws.iter_rows() for c in row}
+    assert not (plaintexts & all_cells)
+
+
+def test_kit_export_is_admin_only(client, catalog, user_token):
+    assert client.get("/api/kits/export.xlsx", headers=bearer(user_token)).status_code == 403
