@@ -2,13 +2,24 @@ from tests.conftest import bearer, register, user_id, panel_id
 
 
 def _register_kit(client, admin_token, assigned_ids, code="DIVJA240"):
+    """Register a kit and grant `assigned_ids` access to it.
+
+    Two calls, because registration no longer takes an assignee list — in production access comes
+    from redeeming the claim code, and an admin grant is a separate PATCH.
+    """
     payload = {
         "kit_code": code,
         "panel_id": panel_id("UA_primers"),
         "selected_tags": ["PP1", "PP2", "PP3", "PP4"],
-        "assigned_user_ids": assigned_ids,
     }
-    return client.post("/api/kits", json=payload, headers=bearer(admin_token))
+    r = client.post("/api/kits", json=payload, headers=bearer(admin_token))
+    if r.status_code == 201 and assigned_ids:
+        client.patch(
+            f"/api/kits/{r.json()['id']}",
+            json={"assigned_user_ids": assigned_ids},
+            headers=bearer(admin_token),
+        )
+    return r
 
 
 def test_admin_registers_kit_from_panel(client, catalog, admin_token):

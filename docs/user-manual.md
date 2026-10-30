@@ -31,13 +31,15 @@ STReamGT takes the raw sequencing data (FASTQ files) from your kit and turns it 
 
 Use **Log in** with the same email and password. Use **Log out** (top-right) when you're done.
 
-> Your account starts empty. Kits are assigned to you by an administrator — see the next section.
+> Your account starts empty. You add a kit by redeeming the claim code printed on its sticker — see the next section.
 
 ------------------------------------------------------------------------
 
 ## 3. Your kits
 
-Open **My kits** from the top menu. This lists every kit an administrator has assigned to your account. Each kit is a pre-configured library — it already knows which genetic markers and tag layout to use, so you don't have to configure anything.
+Open **My kits** from the top menu. Each kit is a pre-configured library — it already knows which genetic markers and tag layout to use, so you don't have to configure anything.
+
+**Adding a kit.** Every kit ships with a **claim code** on its sticker, like `K7QF-3M9P-XR2A-WD6H`. Type it into the claim box on **My kits** and the kit appears in your list — no administrator step, and you can do it the moment the box arrives. (The code box is also on the sign-up form, if your kit arrives before you have an account.) A code works once: it belongs to whoever redeems it first.
 
 **Kit status** tells you where a kit is in its lifecycle:
 
@@ -48,7 +50,7 @@ Open **My kits** from the top menu. This lists every kit an administrator has as
 | **analysed** | An analysis for this kit has already finished successfully. | Locked — each kit is analysed once. Contact an admin to re-enable it. |
 | **reanalyse** | An admin has re-opened the kit. | You can submit it again. |
 
-> **Don't see a kit you expect?** Kits are assigned by an administrator. If one is missing, contact your admin.
+> **Don't see a kit you expect?** Redeem the claim code on its sticker. If the code is rejected, or somebody else has already redeemed it, contact your admin.
 
 ------------------------------------------------------------------------
 
@@ -163,7 +165,7 @@ try the same inputs once more.
 
 **"This kit has already been analysed."** Each kit can be analysed only once. To run it again, ask an administrator to switch it to **reanalyse**.
 
-**I can't find my kit.** Kits are registered and assigned by an administrator. If one is missing from **My kits**, contact your admin.
+**I can't find my kit.** Redeem the claim code from the kit's sticker on **My kits**. If the code is rejected, already used, or missing from the box, contact your admin — they can issue a new one.
 
 **My upload is slow or seems stuck.** FASTQ files are large. Keep the browser tab open until the progress bar completes. On a shaky connection, the **Server path** option (Step 2) lets you point at data already stored for the kit instead of uploading it again.
 

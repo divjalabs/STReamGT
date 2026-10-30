@@ -1,8 +1,10 @@
-"""Kit claim codes: generate a shippable code, store only its keyed HMAC.
+"""Kit claim codes: generate a shippable code and store its keyed HMAC.
 
-The plaintext code is shown to the admin once at kit creation and never persisted. Redeem looks the
-kit up by HMAC (deterministic, so equality lookup works) — a DB leak can't forge codes without the
-server secret. Codes are ~80 bits of entropy, formatted XXXX-XXXX-XXXX-XXXX.
+Redeem looks the kit up by HMAC (deterministic, so equality lookup works) — a DB leak can't forge
+codes without the server secret. Codes are ~80 bits of entropy, formatted XXXX-XXXX-XXXX-XXXX.
+
+An encrypted copy is kept beside the HMAC (code_vault) so a sticker sheet can be reprinted, and
+is destroyed as soon as the kit is claimed.
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Kit, User
+from app.services import code_vault
 
 
 class CodeNotFound(Exception):
@@ -75,12 +78,25 @@ def redeem(db: Session, user: User, code: str) -> Kit:
         kit.users.append(user)
     kit.claimed_by = user.id
     kit.claimed_at = datetime.now(timezone.utc)
+    # The code has done its job: claimed_by now blocks anyone else, so there is nothing left worth
+    # printing. Dropping the readable copy keeps the stored set down to codes still in the post.
+    kit.claim_code_sealed = None
     db.flush()
     return kit
 
 
 def assign_new_code(kit: Kit) -> str:
-    """Generate a fresh code, store its hmac on the kit, and return the plaintext (show once)."""
+    """Generate a fresh code, store it on the kit (hashed and sealed), and return the plaintext.
+
+    Both forms are written together so they can never describe different codes. The sealed copy is
+    what reprints a sticker sheet; the HMAC is what redeem looks up.
+    """
     code = generate_code()
     kit.claim_code_hmac = hmac_code(code)
+    kit.claim_code_sealed = code_vault.seal(code)
     return code
+
+
+def printable_code(kit: Kit) -> str | None:
+    """The kit's claim code if it can still be read back, else None (claimed, or pre-dates sealing)."""
+    return code_vault.unseal(kit.claim_code_sealed)

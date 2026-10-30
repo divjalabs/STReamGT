@@ -2,16 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 
 /**
- * The claim codes just issued — the only time they exist.
+ * The claim codes just issued, ready for the printer.
  *
- * Only a fingerprint of each code is stored, so this card cannot be rebuilt. If it is dismissed
- * or the page is left before the codes are saved, the only way back is issuing new ones, which
- * kills any sticker already printed. Hence: downloading is the primary action, dismissing asks
- * first, and leaving the page warns.
+ * Losing this card is recoverable now: an encrypted copy of each code is kept until the kit is
+ * claimed, so Kits → "Sticker sheet" reprints them. Downloading is still the primary action —
+ * this sheet is the one scoped to exactly this registration.
  */
 export default function ClaimCodesCard({ rows, onDismiss }) {
   const [downloaded, setDownloaded] = useState(false);
-  const [confirmDismiss, setConfirmDismiss] = useState(false);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const ref = useRef(null);
@@ -20,14 +18,6 @@ export default function ClaimCodesCard({ rows, onDismiss }) {
   useEffect(() => {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
-
-  // The browser's own guard against closing the tab on unsaved codes.
-  useEffect(() => {
-    if (downloaded) return;
-    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [downloaded]);
 
   if (!rows?.length) return null;
 
@@ -49,31 +39,19 @@ export default function ClaimCodesCard({ rows, onDismiss }) {
   };
 
   return (
-    <section ref={ref} className={`card claim-codes-card${downloaded ? "" : " warn-sticky"}`}>
+    <section ref={ref} className="card claim-codes-card">
       <div className="row">
-        <b>
-          {rows.length === 1 ? "Claim code" : `${rows.length} claim codes`} — shown only once
-        </b>
+        <b>{rows.length === 1 ? "Claim code" : `${rows.length} claim codes`}</b>
         <span className="spacer" />
-        {confirmDismiss ? (
-          <span className="confirm-inline">
-            Close without saving? These codes cannot be shown again.
-            <button className="danger" onClick={onDismiss}>Close anyway</button>
-            <button className="secondary" onClick={() => setConfirmDismiss(false)}>Keep open</button>
-          </span>
-        ) : (
-          <button
-            className="secondary"
-            onClick={() => (downloaded ? onDismiss() : setConfirmDismiss(true))}
-          >
-            {downloaded ? "Close" : "Dismiss"}
-          </button>
-        )}
+        <button className="secondary" onClick={onDismiss}>
+          {downloaded ? "Close" : "Dismiss"}
+        </button>
       </div>
 
       <p className="muted small">
         Ship each code with its kit — whoever receives it redeems the code to unlock the kit, with
-        no admin step. We keep only a fingerprint, so this list cannot be recovered later.
+        no admin step. Lost this sheet? <b>Kits → ⭳ Sticker sheet</b> reprints the codes of every
+        kit nobody has claimed yet.
       </p>
 
       <div className="row">

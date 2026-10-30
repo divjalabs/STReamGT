@@ -157,8 +157,8 @@ def list_kits(db: Session = Depends(get_db), current: User = Depends(get_current
 def export_kits(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     """Every kit as a spreadsheet: what exists, who holds it, and where it has got to.
 
-    Without claim codes — those are stored only as hashes, and the sticker sheet at registration
-    is the one place they ever appear.
+    Without claim codes, deliberately: this is the file that gets emailed around. The sticker
+    sheet below is the one that carries them.
     """
     from sqlalchemy.orm import selectinload
     from app.services.kit_stickers import build_kit_inventory
@@ -174,6 +174,55 @@ def export_kits(db: Session = Depends(get_db), _: User = Depends(require_admin))
     name = f"streamgt_kits_{date.today():%Y%m%d}.xlsx"
     return Response(
         content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.get("/stickers.xlsx")
+def download_sticker_sheet(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Reprint the claim-code sheet for every kit whose code can still be read back.
+
+    Declared before `/{kit_id}`, like export.xlsx: the other order matches "stickers.xlsx" as a
+    kit id and answers 422.
+
+    A kit is here only while its code is still worth printing — claiming clears the sealed copy,
+    and kits registered before sealing existed never had one. Regenerating a code on the Kits
+    page puts a kit back in this sheet.
+    """
+    from sqlalchemy.orm import selectinload
+    from app.services.kit_stickers import build_sticker_sheet
+
+    kits = db.scalars(
+        select(Kit)
+        .options(selectinload(Kit.panel))
+        .where(Kit.claim_code_sealed.is_not(None))
+        .order_by(Kit.kit_code)
+    ).all()
+
+    rows = []
+    for kit in kits:
+        code = claim_codes.printable_code(kit)
+        if code is None:
+            continue    # sealed under a retired key: unreadable, not an error
+        rows.append({
+            "kit_code": kit.kit_code,
+            "claim_code": code,
+            "species": kit.species,
+            "panel": kit.panel.code if kit.panel else None,
+            "registered": kit.created_at.date().isoformat() if kit.created_at else None,
+        })
+    if not rows:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "No kit has a printable claim code. Claiming a kit clears its code, and kits "
+            "registered before codes were kept cannot be reprinted — use 'code' on a kit to "
+            "issue a fresh one.",
+        )
+
+    name = f"streamgt_claim_codes_{date.today():%Y%m%d}.xlsx"
+    return Response(
+        content=build_sticker_sheet(rows),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
@@ -286,8 +335,6 @@ def create_kit(payload: KitCreate, db: Session = Depends(get_db), admin: User = 
             f"tag columns not in the layout: {sorted(unknown)}",
         )
 
-    assigned = db.scalars(select(User).where(User.id.in_(payload.assigned_user_ids))).all()
-
     kit = Kit(
         kit_code=payload.kit_code,
         panel_id=panel.id,
@@ -301,9 +348,8 @@ def create_kit(payload: KitCreate, db: Session = Depends(get_db), admin: User = 
             TagColumn(name=t, ordinal=_pp_ordinal(t)) for t in payload.selected_tags
         ],
         controls=_build_controls(payload.kit_code, payload.controls),
-        users=list(assigned),
     )
-    code = claim_codes.assign_new_code(kit)   # store hmac; return plaintext once (below)
+    code = claim_codes.assign_new_code(kit)   # hashed + sealed; plaintext returned once (below)
     db.add(kit)
     db.commit()
     db.refresh(kit)
@@ -320,9 +366,9 @@ def create_kit_batch(
     All or nothing: one transaction, one commit. A partial batch would leave the printed sticker
     sheet disagreeing with the database, which is worse than registering none.
 
-    The response carries each kit's claim code in plaintext. That is the only time it exists —
-    only a keyed hash is stored — so the caller must keep it or regenerate, which invalidates any
-    sticker already printed.
+    The response carries each kit's claim code in plaintext, ready for the sticker sheet. An
+    encrypted copy is kept too, so the sheet can be reprinted from the Kits page until the kit is
+    claimed.
     """
     panel = db.get(PrimerPanel, payload.panel_id)
     if panel is None:
@@ -341,8 +387,6 @@ def create_kit_batch(
     if too_long:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, too_long)
 
-    assigned = list(db.scalars(select(User).where(User.id.in_(payload.assigned_user_ids))).all())
-
     rows: list[KitStickerRow] = []
     registered = date.today().isoformat()
     for kit_code in codes:
@@ -358,7 +402,6 @@ def create_kit_batch(
             tag_columns=[TagColumn(name=t, ordinal=_pp_ordinal(t)) for t in payload.selected_tags],
             # Re-resolved per kit: control wells are named after the kit they belong to.
             controls=_build_controls(kit_code, payload.controls),
-            users=list(assigned),
         )
         plaintext = claim_codes.assign_new_code(kit)
         db.add(kit)
@@ -387,11 +430,11 @@ def create_kit_batch(
 def kit_batch_sticker_sheet(
     payload: KitStickerSheetRequest, _: User = Depends(require_admin),
 ):
-    """Format a batch's codes as the spreadsheet the lab prints stickers from.
+    """Format one registration's codes as the spreadsheet the lab prints stickers from.
 
-    A POST, and it echoes back what it is given, because the server cannot look these up: claim
-    codes are stored only as hashes. This exists so the workbook is built in one place rather than
-    assembled in the browser.
+    A POST that echoes back the rows it is handed, which is what keeps it to exactly the kits just
+    registered — the filename says which consignment it is. `GET /stickers.xlsx` is the other
+    half: every kit still printable, for when this sheet was lost.
     """
     from app.services.kit_stickers import build_sticker_sheet
 

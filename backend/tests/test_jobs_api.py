@@ -12,15 +12,22 @@ def no_enqueue(monkeypatch):
 
 
 def _make_kit(client, admin_token, assigned_ids, code="DIVJA240") -> int:
-    return client.post(
+    """Register a kit, then grant access — registration itself no longer takes an assignee list."""
+    kit_id = client.post(
         "/api/kits",
         json={
             "kit_code": code, "panel_id": panel_id("UA_primers"),
             "selected_tags": ["PP1", "PP2", "PP3", "PP4", "PP5", "PP6", "PP7", "PP8"],
-            "assigned_user_ids": assigned_ids,
         },
         headers=bearer(admin_token),
     ).json()["id"]
+    if assigned_ids:
+        client.patch(
+            f"/api/kits/{kit_id}",
+            json={"assigned_user_ids": assigned_ids},
+            headers=bearer(admin_token),
+        )
+    return kit_id
 
 
 def job_payload(kit_id):

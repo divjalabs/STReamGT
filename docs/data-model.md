@@ -6,7 +6,7 @@ Entity–relationship diagram of the backend database (SQLAlchemy models in `bac
 erDiagram
     users ||--o{ jobs          : "submits"
     users ||--o{ kits          : "creates (created_by)"
-    users }o--o{ kits          : "kit_access (assigned to)"
+    users }o--o{ kits          : "kit_access (claimed / granted)"
     primer_panels ||--o{ primers : "contains"
     primer_panels ||--o{ kits    : "chosen by"
     tag_layouts  ||..o{ tag_columns : "columns picked from (no FK)"
@@ -66,6 +66,10 @@ erDiagram
         string   tags_csv_key "S3 (denormalized)"
         int      created_by FK
         datetime created_at
+        string   claim_code_hmac UK "keyed hash — what redeeming looks up"
+        string   claim_code_sealed "encrypted copy, for reprinting a sticker sheet; cleared on claim"
+        int      claimed_by FK
+        datetime claimed_at
     }
 
     tag_columns {
@@ -135,7 +139,7 @@ erDiagram
 
 - **users → jobs** (1:N): a user submits many genotyping jobs (`jobs.user_id`).
 - **users → kits** (1:N): the admin who registered a kit (`kits.created_by`, optional).
-- **users ↔ kits** (M:N): the `kit_access` junction table controls which non-admin users can see/use a kit. Admins see all kits regardless.
+- **users ↔ kits** (M:N): the `kit_access` junction table controls which non-admin users can see/use a kit. Admins see all kits regardless. A row is written when someone redeems the kit's claim code (the normal path, which also sets `claimed_by`) or when an admin grants access by hand on the Kits page.
 - **primer_panels → primers** (1:N): a panel owns its locus rows (cascade delete).
 - **primer_panels → kits** (1:N): a kit references one panel (`kits.panel_id`, optional); species + `primers_csv_key` are **denormalized** onto the kit at save time.
 - **tag_layouts**: a single shared row (PP1..PP12). It is *not* linked by a foreign key — a kit's `tag_columns` are a chosen subset of these column names.

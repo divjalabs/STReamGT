@@ -131,9 +131,13 @@ class Kit(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
-    # Self-service claim: the kit ships a single-use code. Only its keyed HMAC is stored (the
-    # plaintext is shown once at creation); redeeming attaches the kit to the claimer.
+    # Self-service claim: the kit ships a single-use code. Redeeming attaches the kit to the
+    # claimer. The HMAC is what redeem looks up — one-way, so a DB leak cannot forge a code.
     claim_code_hmac: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    # A second, encrypted copy of the same code, so a lost sticker sheet can be reprinted
+    # (services/code_vault.py). Cleared the moment the kit is claimed: the code is inert from
+    # then on, and nothing is left to print. NULL also for kits registered before this existed.
+    claim_code_sealed: Mapped[str | None] = mapped_column(String(255))
     claimed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

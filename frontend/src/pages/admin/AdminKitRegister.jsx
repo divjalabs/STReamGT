@@ -1,14 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import ControlPlate from "../../components/ControlPlate.jsx";
-import AssigneePicker from "../../components/AssigneePicker.jsx";
 import ClaimCodesCard from "../../components/ClaimCodesCard.jsx";
 
 export default function AdminKitRegister() {
   const [panels, setPanels] = useState([]);
   const [layout, setLayout] = useState(null);
-  const [users, setUsers] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -23,26 +21,44 @@ export default function AdminKitRegister() {
   const [tags, setTags] = useState([]);
   const [controlPattern, setControlPattern] = useState("blank");
   const [controls, setControls] = useState([]);        // [{uid, pos, kind, name}]
-  const [assignees, setAssignees] = useState([]);
+  const [showControls, setShowControls] = useState(false);
+  const [selectedTpl, setSelectedTpl] = useState("");
   const [description, setDescription] = useState("");
 
-  // claim codes shown once after create / regenerate
+  // claim codes for the batch just registered
   const [newCodes, setNewCodes] = useState([]);
 
   useEffect(() => {
     api.listPanels().then(setPanels).catch((e) => setErr(e.message));
     api.getTagLayout().then(setLayout).catch((e) => setErr(e.message));
-    api.listUsers().then(setUsers).catch((e) => setErr(e.message));
     api.listControlTemplates().then(setTemplates).catch(() => {});
   }, []);
 
-  let tplSeq = 0;
-  const applyTemplate = (id) => {
-    const tpl = templates.find((t) => String(t.id) === String(id));
-    if (!tpl) return;
+  // A ref, not a module-level `let`: that reset on every render, so applying a second template
+  // could mint uids the first one had already used.
+  const tplSeq = useRef(0);
+  const applyTemplate = () => {
+    const tpl = templates.find((t) => String(t.id) === String(selectedTpl));
+    if (!tpl) return setErr("Choose a template to apply.");
+    setErr(null);
     setControls((tpl.positions || []).map((p) => ({
-      uid: `t${tplSeq++}`, pos: p.position, kind: p.kind, name: p.name || "",
+      uid: `t${tplSeq.current++}`, pos: p.position, kind: p.kind, name: p.name || "",
     })));
+    setShowControls(true);   // never apply a layout the page is hiding
+  };
+  const deleteTemplate = async () => {
+    const tpl = templates.find((t) => String(t.id) === String(selectedTpl));
+    if (!tpl) return setErr("Choose a template to delete.");
+    // Deleting a template never touches kits already registered: the wells are copied onto each
+    // kit at registration, so this only removes the saved shortcut.
+    if (!confirm(`Delete the template "${tpl.name}"? Kits already registered keep their wells.`))
+      return;
+    try {
+      await api.deleteControlTemplate(tpl.id);
+      setTemplates((ts) => ts.filter((t) => t.id !== tpl.id));
+      setSelectedTpl("");
+      setErr(null);
+    } catch (e) { setErr(e.message); }
   };
   const saveTemplate = async () => {
     if (controls.length === 0) return setErr("Add some control positions before saving a template.");
@@ -87,11 +103,10 @@ export default function AdminKitRegister() {
       panel_id: Number(panelId),
       selected_tags: tags,
       controls: controlsPayload,
-      assigned_user_ids: assignees,
       description: description || null,
     };
     const reset = () => {
-      setCodes(""); setPanelId(""); setTags([]); setAssignees([]); setDescription("");
+      setCodes(""); setPanelId(""); setTags([]); setDescription("");
       setControls([]);
     };
 
@@ -177,22 +192,34 @@ export default function AdminKitRegister() {
             <input value={controlPattern} onChange={(e) => setControlPattern(e.target.value)} placeholder="blank" />
           </label>
           <fieldset>
-            <legend>Control positions</legend>
-            <div className="row" style={{ flexWrap: "wrap", gap: ".5rem", alignItems: "center" }}>
-              <label className="inline-label">Apply template
-                <select defaultValue="" onChange={(e) => { applyTemplate(e.target.value); e.target.value = ""; }}>
-                  <option value="">— choose —</option>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </label>
-              <button type="button" className="secondary" onClick={saveTemplate}>Save positions as template</button>
-              <span className="muted small">Names auto-generate as {"{kit}_{type}_{well}"} unless set.</span>
-            </div>
-            <ControlPlate value={controls} onChange={setControls} kitCode={mode === "generate" ? (codePreview || "KIT") : (codes.split(/[\s,]+/)[0] || "KIT")} />
-          </fieldset>
-          <fieldset>
-            <legend>Assign to users</legend>
-            <AssigneePicker users={users} value={assignees} onChange={setAssignees} />
+            {/* Collapsed by default: the plate is the tallest thing on the page, and most
+                batches reuse whatever the last one used. Hiding it changes nothing about what
+                is submitted — the count in the legend says what is still selected. */}
+            <legend>
+              <button type="button" className="linkish" onClick={() => setShowControls((v) => !v)}>
+                {showControls ? "▾" : "▸"} Control positions
+              </button>
+              <span className="muted small">
+                {" "}— {controls.length === 0 ? "none" : `${controls.length} well${controls.length === 1 ? "" : "s"}`}
+              </span>
+            </legend>
+            {showControls && (
+              <>
+                <div className="row" style={{ flexWrap: "wrap", gap: ".5rem", alignItems: "center" }}>
+                  <label className="inline-label">Saved template
+                    <select value={selectedTpl} onChange={(e) => setSelectedTpl(e.target.value)}>
+                      <option value="">— choose —</option>
+                      {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" className="secondary" onClick={applyTemplate}>Apply</button>
+                  <button type="button" className="secondary" onClick={deleteTemplate}>Delete</button>
+                  <button type="button" className="secondary" onClick={saveTemplate}>Save positions as template</button>
+                  <span className="muted small">Names auto-generate as {"{kit}_{type}_{well}"} unless set.</span>
+                </div>
+                <ControlPlate value={controls} onChange={setControls} kitCode={mode === "generate" ? (codePreview || "KIT") : (codes.split(/[\s,]+/)[0] || "KIT")} />
+              </>
+            )}
           </fieldset>
           <label>Description (optional)
             <input value={description} onChange={(e) => setDescription(e.target.value)} />

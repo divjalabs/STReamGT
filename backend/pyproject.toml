@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
     "python-jose[cryptography]>=3.3",   # JWT
+    "cryptography>=3.4",                 # Fernet, for sealing kit claim codes (services/code_vault)
     "bcrypt>=4.1",                       # password hashing
     "python-multipart>=0.0.9",          # form/file uploads
     "celery[redis]>=5.3",

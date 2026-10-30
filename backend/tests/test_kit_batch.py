@@ -1,8 +1,8 @@
 """Registering a consignment of kits in one go, and the sheet the lab prints stickers from.
 
-The claim codes in that sheet exist only in the response that creates the kits — only hashes are
-stored — so these tests care as much about the codes reaching the caller intact as about the rows
-landing in the database.
+A code on a sticker is useless unless it is the one the database will accept, so these tests care
+as much about the codes reaching the caller intact — at registration and on a later reprint — as
+about the rows landing in the database.
 """
 from __future__ import annotations
 
@@ -185,3 +185,75 @@ def test_kit_export_lists_every_kit_without_claim_codes(client, catalog, admin_t
 
 def test_kit_export_is_admin_only(client, catalog, user_token):
     assert client.get("/api/kits/export.xlsx", headers=bearer(user_token)).status_code == 403
+
+
+# --- reprinting the sheet ----------------------------------------------------------------
+# The sealed copy (services/code_vault.py) exists so that closing the page is survivable. These
+# tests care that what comes back out is the code the database will actually accept.
+
+def test_the_sheet_can_be_downloaded_again_later(client, catalog, admin_token):
+    batch = _batch(client, admin_token, count=2).json()
+
+    r = client.get("/api/kits/stickers.xlsx", headers=bearer(admin_token))
+    assert r.status_code == 200
+    assert "spreadsheet" in r.headers["content-type"]
+
+    ws = load_workbook(io.BytesIO(r.content)).active
+    assert [c.value for c in ws[1]][:2] == ["Kit code", "Claim code"]
+    printed = {
+        ws.cell(row=i, column=1).value: ws.cell(row=i, column=2).value
+        for i in range(2, ws.max_row + 1)
+    }
+    for row in batch["kits"]:
+        assert printed[row["kit_code"]] == row["claim_code"]
+
+
+def test_a_reprinted_code_still_redeems(client, catalog, admin_token):
+    """The whole feature in one assertion: the reprint is usable, not just plausible."""
+    _batch(client, admin_token, count=1)
+    sheet = client.get("/api/kits/stickers.xlsx", headers=bearer(admin_token))
+    reprinted = load_workbook(io.BytesIO(sheet.content)).active.cell(row=2, column=2).value
+
+    user = register(client, "reprint-claimer@lab.org")
+    r = client.post("/api/kits/claim", json={"code": reprinted}, headers=bearer(user))
+    assert r.status_code == 200, r.text
+
+
+def test_claiming_takes_a_kit_off_the_sheet(client, catalog, admin_token):
+    """Once claimed the code is inert, so the readable copy is destroyed rather than kept."""
+    row = _batch(client, admin_token, count=1).json()["kits"][0]
+    user = register(client, "off-the-sheet@lab.org")
+    assert client.post("/api/kits/claim", json={"code": row["claim_code"]},
+                       headers=bearer(user)).status_code == 200
+
+    with SessionLocal() as db:
+        kit = db.scalar(select(Kit).where(Kit.kit_code == row["kit_code"]))
+        assert kit.claim_code_sealed is None
+        assert kit.claim_code_hmac is not None, "the code must still redeem for the same claimer"
+
+    r = client.get("/api/kits/stickers.xlsx", headers=bearer(admin_token))
+    assert r.status_code == 404, "nothing left to print"
+
+
+def test_regenerating_puts_a_kit_back_on_the_sheet(client, catalog, admin_token):
+    row = _batch(client, admin_token, count=1).json()["kits"][0]
+    kit_id = client.get("/api/kits", headers=bearer(admin_token)).json()[0]["id"]
+    fresh = client.post(f"/api/kits/{kit_id}/claim-code",
+                        headers=bearer(admin_token)).json()["claim_code"]
+    assert fresh != row["claim_code"]
+
+    sheet = client.get("/api/kits/stickers.xlsx", headers=bearer(admin_token))
+    codes = {c.value for r_ in load_workbook(io.BytesIO(sheet.content)).active.iter_rows()
+             for c in r_}
+    assert fresh in codes
+    assert row["claim_code"] not in codes, "the superseded code must not be printed again"
+
+
+def test_the_sheet_is_admin_only(client, catalog, user_token):
+    assert client.get("/api/kits/stickers.xlsx", headers=bearer(user_token)).status_code == 403
+
+
+def test_the_sheet_explains_itself_when_empty(client, catalog, admin_token):
+    r = client.get("/api/kits/stickers.xlsx", headers=bearer(admin_token))
+    assert r.status_code == 404
+    assert "regenerat" in r.text or "fresh one" in r.text

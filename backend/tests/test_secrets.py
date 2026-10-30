@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from app.config import Settings, _assert_usable_in_production
-from app.services import claim_codes
+from app.services import claim_codes, code_vault
 
 
 REAL_KEY = "a-real-looking-secret-value"
@@ -57,6 +57,48 @@ def test_the_fallback_keeps_local_development_working(monkeypatch):
     monkeypatch.setattr(claim_codes.settings, "claim_code_key", None)
     code = claim_codes.generate_code()
     assert claim_codes.hmac_code(code) == claim_codes.hmac_code(code.lower().replace("-", " "))
+
+
+# --- the sealed copy a sticker sheet is reprinted from ---------------------------------
+
+def test_a_sealed_code_comes_back_out(monkeypatch):
+    monkeypatch.setattr(code_vault.settings, "claim_code_key", "codes-key")
+    code = claim_codes.generate_code()
+    assert code_vault.unseal(code_vault.seal(code)) == code
+
+
+def test_the_sealed_blob_does_not_contain_the_code(monkeypatch):
+    """Otherwise a database dump would hand the codes over anyway, which is the whole point."""
+    monkeypatch.setattr(code_vault.settings, "claim_code_key", "codes-key")
+    code = claim_codes.generate_code()
+    blob = code_vault.seal(code)
+    assert code not in blob
+    assert claim_codes._normalize(code) not in blob
+
+
+def test_a_blob_sealed_under_another_key_will_not_open(monkeypatch):
+    """A rotated claim-code key makes old codes unreadable — the same cost as the HMAC's."""
+    monkeypatch.setattr(code_vault.settings, "claim_code_key", "codes-key-v1")
+    blob = code_vault.seal("K7QF-3M9P-XR2A-WD6H")
+
+    monkeypatch.setattr(code_vault.settings, "claim_code_key", "codes-key-v2")
+    assert code_vault.unseal(blob) is None, "one unreadable row must not fail a whole sheet"
+
+
+def test_nothing_sealed_means_nothing_to_unseal():
+    assert code_vault.unseal(None) is None
+    assert code_vault.unseal("") is None
+    assert code_vault.unseal("not-a-token") is None
+
+
+def test_sealing_follows_the_claim_code_key_not_the_login_key(monkeypatch):
+    """Same guarantee as the HMAC's: rotating the login key leaves kits in the post alone."""
+    monkeypatch.setattr(code_vault.settings, "secret_key", "login-key-v1")
+    monkeypatch.setattr(code_vault.settings, "claim_code_key", "codes-key")
+    blob = code_vault.seal("K7QF-3M9P-XR2A-WD6H")
+
+    monkeypatch.setattr(code_vault.settings, "secret_key", "login-key-v2")  # leaked, rotated
+    assert code_vault.unseal(blob) == "K7QF-3M9P-XR2A-WD6H"
 
 
 # --- refusing to run on the public placeholder -----------------------------------------

@@ -56,7 +56,6 @@ class KitCreate(BaseModel):
     controls: list[ControlIn] = Field(default_factory=_default_controls)
     description: str | None = None
     status: KitStatus = KitStatus.sent
-    assigned_user_ids: list[int] = []
 
 
 class KitBatchCreate(BaseModel):
@@ -72,7 +71,6 @@ class KitBatchCreate(BaseModel):
     controls: list[ControlIn] = Field(default_factory=_default_controls)
     description: str | None = None
     status: KitStatus = KitStatus.sent
-    assigned_user_ids: list[int] = []
 
 
 class KitStickerRow(BaseModel):
@@ -86,7 +84,7 @@ class KitStickerRow(BaseModel):
 
 
 class KitBatchOut(BaseModel):
-    """The claim codes are in here and nowhere else — only their hashes are stored."""
+    """The batch, with each kit's claim code — the response the sticker sheet is built from."""
 
     kits: list[KitStickerRow]
     panel: str
@@ -95,7 +93,7 @@ class KitBatchOut(BaseModel):
 
 
 class KitStickerSheetRequest(BaseModel):
-    """Rows to format as .xlsx. Sent back to the server because it cannot look them up again."""
+    """Rows to format as .xlsx: exactly one registration's kits, echoed back from the response."""
 
     rows: list[KitStickerRow] = Field(min_length=1, max_length=500)
 

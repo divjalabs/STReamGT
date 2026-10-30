@@ -1,9 +1,8 @@
 """Build the .xlsx the lab prints shipping stickers from: one row per kit, code and claim code.
 
-This formats data it is handed and stores nothing, which is not a shortcut — it is the only way
-the sheet can exist. Claim codes are kept as keyed hashes (services/claim_codes.py), so the
-plaintext lives in the response that created the kits and nowhere else. A sheet rebuilt later
-could only contain codes that had been regenerated, invalidating any sticker already printed.
+Formats rows it is handed and stores nothing. The caller decides where the codes come from: the
+registration response (POST /kits/batch/stickers.xlsx) or the encrypted copies kept on the kits
+themselves (GET /kits/stickers.xlsx, via services/code_vault.py).
 """
 from __future__ import annotations
 
@@ -59,9 +58,9 @@ _INVENTORY_WIDTHS = [26, 20, 20, 24, 12, 28, 13, 40]
 def build_kit_inventory(kits) -> bytes:
     """Every kit as a table: what exists, who holds it, and where it has got to.
 
-    Deliberately without claim codes. They are stored as keyed hashes, so they cannot appear
-    here — and a kit's code is only secret until it is redeemed anyway. The sticker sheet
-    (build_sticker_sheet) is the one place they ever appear, at the moment of registration.
+    Deliberately without claim codes, even though they could now be read back: this is the file
+    that gets emailed around, and an unclaimed code is a bearer token. Codes go only through
+    build_sticker_sheet, which is what the lab prints.
     """
     wb = Workbook()
     ws = wb.active

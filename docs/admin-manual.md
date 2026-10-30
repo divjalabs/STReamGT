@@ -9,7 +9,7 @@ editor_options:
 
 *For STReamGT administrators.*
 
-This guide covers the admin-only features of the STReamGT web app: managing primer panels, registering and assigning kits, managing users, and handling client issues. It assumes you're already familiar with the client-facing flow — if not, read the [User Guide](/manuals/user) first, since admins can do everything a client can, plus the extra screens described here.
+This guide covers the admin-only features of the STReamGT web app: managing primer panels, registering kits, managing users, and handling client issues. It assumes you're already familiar with the client-facing flow — if not, read the [User Guide](/manuals/user) first, since admins can do everything a client can, plus the extra screens described here.
 
 > **Scope:** this document is about the **web app admin UI** only. For the API-level way to onboard a kit (tokens, `POST /api/kits`, file keys), see [`kit-onboarding.md`](https://github.com/divjalabs/STReamGT/blob/main/docs/kit-onboarding.md). For infrastructure, deployment, and AWS operations, see [`aws-setup.md`](https://github.com/divjalabs/STReamGT/blob/main/docs/aws-setup.md) and [`deployment.md`](https://github.com/divjalabs/STReamGT/blob/main/docs/deployment.md).
 
@@ -21,7 +21,7 @@ Admins see three extra items in the top menu — **Kits**, **Panels**, and **Use
 
 You become an admin only by being **promoted by another admin** on the **Users** page (see [Section 5](#5-users)).
 
-**Typical admin workflow for onboarding a client:** 1. Make sure a **primer panel** exists for the species → [Section 2](#2-primer-panels). 2. **Register a kit** (or several) and **assign** it to the client's account → [Section 3](#3-kits). 3. The client marks the kit received, submits an analysis, and downloads results. 4. When they need to re-run an already-analysed kit, flip it to **reanalyse** → [Section 4](#4-kit-lifecycle--the-reanalyse-rule).
+**Typical admin workflow for onboarding a client:** 1. Make sure a **primer panel** exists for the species → [Section 2](#2-primer-panels). 2. **Register a kit** (or several) and ship each one with its **claim code** sticker → [Section 3](#3-kits). 3. The client redeems the code, marks the kit received, submits an analysis, and downloads results. 4. When they need to re-run an already-analysed kit, flip it to **reanalyse** → [Section 4](#4-kit-lifecycle--the-reanalyse-rule).
 
 ------------------------------------------------------------------------
 
@@ -55,7 +55,7 @@ In the **Catalog** table each panel shows its code, species, and **marker count*
 
 ## 3. Kits
 
-A **kit** ties a kit code to a panel (species), a set of tag columns, a negative-control rule, and the client(s) who own it. Clients pick a kit when submitting — they never configure any of this themselves. Open **Kits** from the top menu.
+A **kit** ties a kit code to a panel (species), a set of tag columns and a negative-control rule. A kit reaches a client when they redeem the claim code shipped in its box; clients pick a kit when submitting and never configure any of this themselves. Open **Kits** from the top menu.
 
 ### Register one or many kits
 
@@ -71,32 +71,35 @@ Then:
 - **Primer panel (species)** — choose from the panels you created in Section 2.
 - **Tag columns** — tick the PP columns (PP1…PP12) this kit uses. These populate the client's tag picker at submission.
 - **Negative control name pattern** — default `blank`. Any sample whose name contains this text is treated as a negative control by the analysis.
-- **Assign to users** — type a client's email in the picker and select them; add as many as needed. Assigned clients see the kit in their **My kits**.
+- **Control positions** — collapsed by default; the heading says how many wells are selected. Open it to paint control wells onto a 96-well plate, and to work with saved layouts: pick a **Saved template** and **Apply** it, **Save positions as template** to keep the current layout for next time, or **Delete** a template you no longer use. Deleting a template leaves kits already registered untouched — their wells were copied onto them at registration.
 - **Description** — optional.
+
+There is no "assign to users" step: a kit reaches whoever redeems its claim code.
 
 Click **Register kit(s)**. A generated batch is all-or-nothing: if anything is rejected, no kits are created, so the codes you print always match what exists. (Typing codes by hand still reports individual failures, since each is registered separately.)
 
 ### The claim codes, and the sticker sheet
 
-After registering, the page shows each kit's **claim code** — the code whoever receives the kit types in to unlock it. **This is the only time those codes exist.** The platform stores only a fingerprint of each one, so the list cannot be shown again; if it is lost, the only remedy is generating new codes, which kills any sticker already printed.
+After registering, the page shows each kit's **claim code** — the code whoever receives the kit types in to unlock it. **⭳ Download for printing** gives you a spreadsheet with one row per kit: kit code, claim code, species, panel, the date, and an empty **Sent to** column for whoever packs the boxes.
 
-So the first thing to do is **⭳ Download for printing** — a spreadsheet with one row per kit: kit code, claim code, species, panel, the date, and an empty **Sent to** column for whoever packs the boxes. The page warns you if you try to close it before downloading.
+That sheet covers exactly the kits you just registered. If you lose it, or close the page before downloading, open **Kits** and use **⭳ Sticker sheet (.xlsx)** — it reprints the codes of every kit nobody has claimed yet. The codes are stored encrypted, so reprinting gives you the same ones; the stored copy is destroyed the moment a kit is claimed, at which point the code can do nothing anyway.
 
-If a code really is lost, open **Kits**, find the row and click **code** to issue a new one. The old code stops working immediately, so the kit needs a new sticker.
+Two things are *not* reprintable: a kit someone has already claimed, and a kit registered before October 2026 (codes were kept as fingerprints only until then). For either, find the row in **Kits** and click **code** to issue a new one — the old code stops working immediately, so the kit needs a new sticker.
 
 ### Finding a kit, and exporting the list
 
 Every column in **All kits** sorts — click a heading, click again to reverse.
 
 **⭳ Export kits (.xlsx)** downloads the whole list as a spreadsheet, with a filter row ready for
-sorting and filtering in Excel. It does *not* contain claim codes: those are stored only as
-fingerprints, and the sticker sheet produced at registration is the one place they appear.
+sorting and filtering in Excel. It deliberately contains no claim codes — this is the file that
+gets emailed around, and an unclaimed code is enough to take a kit. Codes come only from
+**⭳ Sticker sheet (.xlsx)**, the file the lab prints.
 
 ### Edit or delete a kit
 
 In the **All kits** table, click **edit** on a row to change its **status** and its **assigned users**, then **Save**. Use **delete** to remove a kit.
 
-Assigning a user is no longer the usual way kits reach people — they claim them with the code shipped in the box, which is why the table shows **Claimed by** rather than a list of assignees. The assignee picker is still there while editing a row, for granting someone access to a kit they did not claim.
+Kits reach people by claim code, which is why the table shows **Claimed by** and why the register form has no assignee field. The picker here is the exception that remains: use it to give someone access to a kit they did not claim — most often a kit claimed by the wrong account.
 
 ------------------------------------------------------------------------
 
@@ -115,11 +118,12 @@ Each kit moves through four statuses:
 
 **To let a client re-run a kit:** open **Kits**, **edit** the kit, set its status to **reanalyse**, and **Save**. The client can then submit it again.
 
-**Claim codes and the platform's keys.** A kit's claim code is stored only as a fingerprint, never
-as text — which is why the code is shown once at registration and cannot be looked up later. If a
-code is lost, regenerate it on the **Kits** page; the old one stops working immediately. The key
-that signs these codes is kept separate from the one that signs logins, so a security rotation of
-the login key cannot invalidate codes on kits already in the post.
+**Claim codes and the platform's keys.** A kit's claim code is stored twice and never as plain
+text: as a fingerprint, which is what redeeming checks against, and encrypted, which is what
+**⭳ Sticker sheet** reprints. The encrypted copy is deleted as soon as the kit is claimed. Both
+use a key kept separate from the one that signs logins and held in AWS Parameter Store rather than
+the database — so a security rotation of the login key cannot invalidate codes on kits already in
+the post, and a stolen database backup contains no usable codes.
 
 **Clients can now stop their own runs.** A user who spots a mistake can press **Stop analysis** on
 the job page; the run halts and the kit stays unlocked, so they can resubmit without asking you.
@@ -141,9 +145,9 @@ Open **Users** from the top menu to see every account with its email, organisati
 
 You **cannot change your own account** here (no self-demotion or self-deactivation) — ask another admin if needed.
 
-> **Kit assignment is not done here** — assign kits to users on the **Kits** page ([Section 3](#3-kits)).
+> **Kits are not handed out here** — clients claim them with the code in the box ([Section 3](#3-kits)), and the **Kits** page can grant access by hand if one goes to the wrong account.
 
-**New-user alerts:** whenever a client registers, all admins receive an email so you can assign them a kit. The signup email links straight to the **Users** page.
+**New-user alerts:** whenever a client registers, all admins receive an email. The signup email links straight to the **Users** page.
 
 ------------------------------------------------------------------------
 
@@ -153,7 +157,7 @@ You **cannot change your own account** here (no self-demotion or self-deactivati
 
 **A client needs to re-run an analysed kit.** Set the kit to **reanalyse** on the **Kits** page — see [Section 4](#4-kit-lifecycle--the-reanalyse-rule).
 
-**A client can't see their kit.** Confirm the kit exists and that the client's email is in the kit's assignee list (**Kits → edit**). Also confirm the account is **active** on the **Users** page.
+**A client can't see their kit.** Confirm the kit exists and that they redeemed its claim code — the **Claimed by** column on the **Kits** page shows who holds it. If it was claimed by the wrong account, **Kits → edit** can grant the right person access. Also confirm the account is **active** on the **Users** page.
 
 **Wrong panel or tags on a kit.** Panel choice and tag columns are set at kit creation. If they're wrong, delete the kit and re-register it with the correct panel/tags (make sure the correct panel exists first).
 

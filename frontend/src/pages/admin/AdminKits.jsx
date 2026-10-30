@@ -20,6 +20,7 @@ export default function AdminKits() {
   // the hundreds.
   const [sort, setSort] = useState({ key: "kit_code", dir: "asc" });
   const [exporting, setExporting] = useState(false);
+  const [sheeting, setSheeting] = useState(false);
   const [editId, setEditId] = useState(null);
   const [edit, setEdit] = useState({ status: "sent", assigned_user_ids: [] });
 
@@ -32,12 +33,25 @@ export default function AdminKits() {
   const exportKits = async () => {
     setExporting(true); setErr(null);
     try {
-      // Without claim codes: those are hashed, and only the sticker sheet at registration has them.
+      // Without claim codes, deliberately — this is the file that gets emailed around.
       await api.downloadKitExport();
     } catch (e) {
       setErr(e.message);
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Reprints the codes for every kit nobody has claimed yet, for when the sheet from
+  // registration was lost. Claiming a kit drops it from this sheet.
+  const stickerSheet = async () => {
+    setSheeting(true); setErr(null);
+    try {
+      await api.downloadKitStickerSheet();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSheeting(false);
     }
   };
 
@@ -106,6 +120,10 @@ export default function AdminKits() {
         <span className="spacer" />
         <button className="secondary" onClick={exportKits} disabled={exporting}>
           {exporting ? "Preparing…" : "⭳ Export kits (.xlsx)"}
+        </button>{" "}
+        <button className="secondary" onClick={stickerSheet} disabled={sheeting}
+                title="Claim codes for every kit nobody has claimed yet">
+          {sheeting ? "Preparing…" : "⭳ Sticker sheet (.xlsx)"}
         </button>{" "}
         <Link to="/admin/kits/new"><button>＋ Register kit(s)</button></Link>
       </div>

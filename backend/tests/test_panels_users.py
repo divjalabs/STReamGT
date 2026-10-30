@@ -36,7 +36,7 @@ def test_delete_panel_blocked_when_in_use(client, catalog, admin_token):
     pid = panel_id("UA_primers")
     # register a kit that uses the panel
     client.post("/api/kits", json={
-        "kit_code": "K1", "panel_id": pid, "selected_tags": ["PP1"], "assigned_user_ids": [],
+        "kit_code": "K1", "panel_id": pid, "selected_tags": ["PP1"],
     }, headers=bearer(admin_token))
     r = client.delete(f"/api/panels/{pid}", headers=bearer(admin_token))
     assert r.status_code == 409 and "used by kit" in r.text

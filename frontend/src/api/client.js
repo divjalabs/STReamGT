@@ -88,8 +88,9 @@ async function assertDownloadable(res) {
 }
 
 /**
- * Download the kit sticker sheet. Unlike every other download here this is a POST, because the
- * server stores only fingerprints of claim codes — it formats the rows we hand back to it.
+ * Download the sticker sheet for one registration. A POST, unlike every other download here,
+ * because it is the rows we hand back that pin the sheet to exactly the kits just created.
+ * api.downloadKitStickerSheet() is the other one: every kit still printable.
  */
 export async function downloadKitStickers(rows) {
   const headers = { "Content-Type": "application/json" };
@@ -187,6 +188,11 @@ export const api = {
     downloadBlob("/kits/export.xlsx", `streamgt_kits_${new Date().toISOString().slice(0, 10)}.xlsx`),
   createKitBatch: (payload) => request("/kits/batch", { method: "POST", body: payload }),
   downloadKitStickers: (rows) => downloadKitStickers(rows),
+  downloadKitStickerSheet: () =>
+    downloadBlob(
+      "/kits/stickers.xlsx",
+      `streamgt_claim_codes_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    ),
   regenerateClaimCode: (id) => request(`/kits/${id}/claim-code`, { method: "POST" }),
   revokeClaim: (id) => request(`/kits/${id}/claim`, { method: "DELETE" }),
   getKitReads: (id) => request(`/kits/${id}/reads`),
