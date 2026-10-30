@@ -128,11 +128,7 @@ async def upload_tag_layout(
 def list_kits(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """Admins see all kits; non-admins see only kits granted to them."""
     from sqlalchemy.orm import selectinload
-    stmt = (
-        select(Kit)
-        .options(selectinload(Kit.reads), selectinload(Kit.panel))
-        .order_by(Kit.kit_code)
-    )
+    stmt = select(Kit).options(selectinload(Kit.reads)).order_by(Kit.kit_code)
     if not current.is_admin:
         stmt = stmt.join(kit_access, kit_access.c.kit_id == Kit.id).where(
             kit_access.c.user_id == current.id
@@ -153,7 +149,6 @@ def list_kits(db: Session = Depends(get_db), current: User = Depends(get_current
             by_kit[kid].append(KitStudyRef(id=sid, name=sname, project_id=pid, population_id=popid))
     for k in kits:
         k.studies = by_kit.get(k.id, [])   # transient attr read by KitSummary
-        k.panel_code = k.panel.code if k.panel else None
     _attach_claim_emails(db, list(kits))
     return kits
 

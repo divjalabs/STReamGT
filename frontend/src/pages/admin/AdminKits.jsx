@@ -44,11 +44,9 @@ export default function AdminKits() {
   const SORT_VALUE = {
     kit_code: (k) => k.kit_code || "",
     species: (k) => k.species || "",
-    panel_code: (k) => k.panel_code || "",
     tags: (k) => k.tag_columns.map((t) => t.name).join(","),
     claimed_by_email: (k) => k.claimed_by_email || "",
     status: (k) => k.status || "",
-    created_at: (k) => k.created_at || "",
   };
 
   const sorted = [...(kits || [])].sort((a, b) => {
@@ -121,11 +119,9 @@ export default function AdminKits() {
           <tr>
             <Th label="Kit" k="kit_code" />
             <Th label="Species" k="species" />
-            <Th label="Panel" k="panel_code" />
             <Th label="Tags" k="tags" />
             <Th label="Claimed by" k="claimed_by_email" />
             <Th label="Status" k="status" />
-            <Th label="Registered" k="created_at" />
             <th></th>
           </tr>
         </thead>
@@ -134,7 +130,6 @@ export default function AdminKits() {
             <tr key={k.id}>
               <td>{k.kit_code}</td>
               <td>{k.species || "—"}</td>
-              <td className="muted">{k.panel_code || "—"}</td>
               <td className="muted">{k.tag_columns.map((t) => t.name).join(", ")}</td>
               <td className="muted">{k.claimed_by_email || "—"}</td>
               <td>
@@ -158,11 +153,9 @@ export default function AdminKits() {
                 {k.description && <div className="muted small">{k.description}</div>}
               </td>
               <td>{k.species || "—"}</td>
-              <td className="muted">{k.panel_code || "—"}</td>
               <td className="muted">{k.tag_columns.map((t) => t.name).join(", ")}</td>
               <td className="muted">{k.claimed_by_email || "unclaimed"}</td>
               <td><span className={`badge ${STATUS_CLASS[k.status] || ""}`}>{k.status}</span></td>
-              <td className="muted small">{k.created_at ? k.created_at.slice(0, 10) : "—"}</td>
               <td>
                 <button className="secondary" onClick={() => startEdit(k)}>edit</button>{" "}
                 <button className="linkish" onClick={() => regenCode(k.id)}>code</button>{" "}

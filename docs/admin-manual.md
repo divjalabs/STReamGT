@@ -86,8 +86,7 @@ If a code really is lost, open **Kits**, find the row and click **code** to issu
 
 ### Finding a kit, and exporting the list
 
-Every column in **All kits** sorts — click a heading, click again to reverse. The table shows the
-kit code, species, panel, tag columns, who claimed it, its status and when it was registered.
+Every column in **All kits** sorts — click a heading, click again to reverse.
 
 **⭳ Export kits (.xlsx)** downloads the whole list as a spreadsheet, with a filter row ready for
 sorting and filtering in Excel. It does *not* contain claim codes: those are stored only as
