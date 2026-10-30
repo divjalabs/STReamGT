@@ -55,7 +55,11 @@ export default function AdminPanels() {
 
   const startEdit = (p) => {
     setEditId(p.id);
-    setEdit({ species_common: p.species_common || "", species_latin: p.species_latin || "" });
+    setEdit({
+      code: p.code || "",
+      species_common: p.species_common || "",
+      species_latin: p.species_latin || "",
+    });
   };
   const saveEdit = async (id) => {
     try { await api.updatePanel(id, edit); setEditId(null); load(); }
@@ -109,7 +113,14 @@ export default function AdminPanels() {
           {panels.map((p) => (
             <Fragment key={p.id}>
               <tr>
-                <td><a href="#" onClick={(e) => { e.preventDefault(); view(p); }}>{p.code}</a></td>
+                <td>
+                  {editId === p.id ? (
+                    <input value={edit.code} onChange={(e) => setEdit({ ...edit, code: e.target.value })}
+                           placeholder="panel code" />
+                  ) : (
+                    <button type="button" className="linkish" onClick={() => view(p)}>{p.code}</button>
+                  )}
+                </td>
                 <td>
                   {editId === p.id ? (
                     <span className="row">
@@ -126,6 +137,11 @@ export default function AdminPanels() {
                     <>
                       <button className="secondary" onClick={() => saveEdit(p.id)}>Save</button>{" "}
                       <button className="link" onClick={() => setEditId(null)}>cancel</button>
+                      <div className="muted small">
+                        New kits are named after the panel code — e.g.{" "}
+                        {`${edit.code || "Panelname"}_${new Date().toISOString().slice(2, 10).replace(/-/g, "")}_01`}.
+                        Kits already registered keep the codes they were given.
+                      </div>
                     </>
                   ) : (
                     <>

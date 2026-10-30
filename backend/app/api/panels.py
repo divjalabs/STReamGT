@@ -1,6 +1,8 @@
 """Primer-panel catalog (admin): the reusable per-species primer sets kits are built from."""
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +11,21 @@ from app.db import get_db
 from app.models import User, Kit, PrimerPanel, Primer, PrimerType
 from app.auth.deps import require_admin
 from app.services import storage
+
+# A panel's code names the kits registered from it (`<panel>_<YYMMDD>_<NN>`), and a kit code in
+# turn becomes an S3 prefix and part of every control well's name — so a slash or a space here
+# would land somewhere unwelcome. Letters, digits, and the three safe separators.
+_PANEL_CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$")
+
+
+def _check_panel_code(code: str) -> None:
+    if not _PANEL_CODE_RE.match(code or ""):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "A panel code must start with a letter or digit and use only letters, digits, "
+            "'.', '-' or '_' (max 48 characters). It names every kit registered from this "
+            "panel, so it has to be safe in a filename.",
+        )
 from app.services.kit_files import parse_primers_csv
 from app.schemas.panel import PanelOut, PanelSummary, PanelUpdate
 
@@ -49,6 +66,7 @@ def update_panel(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Panel not found")
     data = payload.model_dump(exclude_unset=True)
     if "code" in data and data["code"] != panel.code:
+        _check_panel_code(data["code"])
         if db.scalar(select(PrimerPanel).where(PrimerPanel.code == data["code"])):
             raise HTTPException(status.HTTP_409_CONFLICT, "panel code already exists")
     for k, v in data.items():
@@ -84,6 +102,7 @@ async def create_panel(
     _: User = Depends(require_admin),
 ):
     """Add a new panel: upload its primers CSV, which is parsed and stored in S3."""
+    _check_panel_code(code)
     if db.scalar(select(PrimerPanel).where(PrimerPanel.code == code)):
         raise HTTPException(status.HTTP_409_CONFLICT, "panel code already exists")
 

@@ -94,18 +94,44 @@ def test_nothing_is_created_when_the_batch_is_rejected(client, catalog, admin_to
     assert _count_kits() == before, "a rejected batch must leave no kits behind"
 
 
-def test_an_over_long_panel_name_is_refused_with_advice(client, catalog, admin_token):
-    """The code prefixes every control well, so it cannot grow without limit."""
+def test_a_panel_cannot_be_named_something_unusable(client, catalog, admin_token):
+    """The panel code becomes the kit code, which becomes an S3 prefix and control well names."""
     pid = panel_id("UA_primers")
-    client.patch(f"/api/panels/{pid}", json={"code": "X" * 60}, headers=bearer(admin_token))
 
-    r = client.post(
+    for bad in ["X" * 60, "bear/plex", "bear plex", ""]:
+        r = client.patch(f"/api/panels/{pid}", json={"code": bad}, headers=bearer(admin_token))
+        assert r.status_code == 422, f"{bad!r} should be refused"
+        assert "letters, digits" in r.json()["detail"]
+
+    ok = client.patch(f"/api/panels/{pid}", json={"code": "Bearplex"}, headers=bearer(admin_token))
+    assert ok.status_code == 200 and ok.json()["code"] == "Bearplex"
+
+
+def test_renaming_a_panel_renames_only_future_kits(client, catalog, admin_token):
+    """Codes already issued are printed on stickers — they must never move."""
+    before = _batch(client, admin_token, count=1).json()["kits"][0]["kit_code"]
+    pid = panel_id("UA_primers")
+    client.patch(f"/api/panels/{pid}", json={"code": "Bearplex"}, headers=bearer(admin_token))
+
+    after = client.post(
         "/api/kits/batch",
         json={"panel_id": pid, "count": 1, "selected_tags": ["PP1"]},
         headers=bearer(admin_token),
-    )
-    assert r.status_code == 422
-    assert "shorter name" in r.json()["detail"]
+    ).json()["kits"][0]["kit_code"]
+
+    assert before.startswith("UA_primers_")
+    assert after.startswith("Bearplex_")
+    with SessionLocal() as db:
+        assert db.scalar(select(Kit).where(Kit.kit_code == before)) is not None, \
+            "the already-registered kit keeps its original code"
+
+
+def test_over_long_generated_codes_are_caught(client, catalog):
+    """Belt and braces behind the panel-code limit: kit_code is capped at 64 characters."""
+    from app.services import kit_codes
+
+    assert kit_codes.check_length(["A" * 60 + "_261029_01"]) is not None
+    assert kit_codes.check_length(["Bearplex_261029_01"]) is None
 
 
 def test_only_admins_may_register_a_batch(client, catalog, user_token):

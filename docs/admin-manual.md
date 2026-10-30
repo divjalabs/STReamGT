@@ -64,7 +64,7 @@ Use the **Register kit(s)** form. Every kit in one batch shares the same configu
 - **Generate codes** (the usual way) — say how many kits you need, and the platform names them after the panel and today's date: `Bearplex_261029_01`, `_02`, and so on. Numbering restarts each day for each panel, and a second batch the same day continues from where the first stopped.
 - **Enter my own** — type codes by hand, separated by commas or spaces. Use this when a code has to match an external numbering scheme.
 
-Because the code comes from the panel's name, **name your panels the way you want kits to read** (Section 2 → **rename**). If three wolf panels should produce distinguishable kits, give the three panels distinct names. Renaming a panel later never changes codes already issued — those are printed on stickers.
+Because the code comes from the panel's name, **name your panels the way you want kits to read** — Section 2 → **rename**, which edits the panel code as well as the species labels. A panel code may use letters, digits, `.`, `-` and `_` only, because it ends up in kit codes, control well names and file paths. If three wolf panels should produce distinguishable kits, give the three panels distinct names. Renaming a panel later never changes codes already issued — those are printed on stickers.
 
 Then:
 
