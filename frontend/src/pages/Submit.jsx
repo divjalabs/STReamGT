@@ -437,6 +437,17 @@ export default function Submit() {
               <div className="tabs">
                 <button type="button" className={b.sampleMode === "upload" ? "active" : ""} onClick={() => setBatch(b.uid, { sampleMode: "upload", sampleFile: null, sheetWells: null })}>Upload Excel</button>
                 <button type="button" className={b.sampleMode === "table" ? "active" : ""} onClick={() => setBatch(b.uid, { sampleMode: "table" })}>Enter samples</button>
+                <span className="spacer" />
+                {/* Here rather than on My kits: this is the moment the plate is wanted. Offered
+                    for any kit — with no control wells defined it is simply a blank 96-well
+                    sheet with the grid formulas, which is still what you fill in. */}
+                {kit && (
+                  <button type="button" className="secondary" onClick={() =>
+                    api.downloadKitTemplate(kit.id, `${kit.kit_code}_plate_template.xlsx`)
+                      .catch((e) => setErr(e.message))}>
+                    ⭳ Plate template
+                  </button>
+                )}
               </div>
               {b.sampleMode === "upload" ? (
                 <>

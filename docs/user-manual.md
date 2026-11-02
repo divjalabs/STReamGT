@@ -101,6 +101,8 @@ A **batch** is a group of samples that share a plate layout. Most runs have a si
 2.  **Samples** — provide the sample names in plate order, one of two ways:
     - **Upload Excel** — an `.xlsx` sample sheet, or
     - **Enter samples** — type names directly into the on-screen 96-well plate. **All 96 wells must be filled** before you can submit.
+
+    **⭳ Plate template** gives you the spreadsheet to fill in for the Upload Excel route: a 96-well sheet with the position grid and its formulas, and any control wells your kit defines already filled in and labelled. Fill in the sample names, save, and upload it back.
 3.  **Tags (PP columns)** — tick the tag columns used for this batch. All are ticked by default; untick any you didn't use.
 
 Use **+ add another sample batch** to add more, or **remove** to delete one.
