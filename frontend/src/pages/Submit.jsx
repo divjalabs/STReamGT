@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, uploadFile } from "../api/client.js";
 import { isTerminal } from "../config/jobs.js";
-import SampleTable, { rowsToSampleText, filledWellCount, TOTAL_WELLS, controlPlateWarnings } from "../components/SampleTable.jsx";
+import SampleTable, { rowsToSampleText, sampleTextToRows, filledWellCount, TOTAL_WELLS, controlPlateWarnings } from "../components/SampleTable.jsx";
 import TargetPicker from "../components/TargetPicker.jsx";
 
 const EMPTY_TARGET = { project_id: null, default_population_id: null, default_study_id: null };
@@ -39,6 +39,11 @@ export default function Submit() {
   const [params, setParams] = useState({});
   const [paramsErr, setParamsErr] = useState(null);  // defaults unreadable -> say so, don't hide
   const [jobsErr, setJobsErr] = useState(null);      // can't tell whether a run is already going
+  // The kit's saved setup sheet: this page can be filled in and kept long before any FASTQ.
+  const [setupSavedAt, setSetupSavedAt] = useState(null);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupMsg, setSetupMsg] = useState(null);
+  const [savedSnapshot, setSavedSnapshot] = useState(null);  // payload as last written
 
   // The submit bar is sticky to the bottom, but it is still below the fold while the page is
   // scrolled up. Bring the message to the eye rather than hoping it is already there.
@@ -54,7 +59,9 @@ export default function Submit() {
     // A failure here silently re-enabled submitting while another run was in flight.
     api.listJobs().then(setJobs).catch((e) => setJobsErr(e.message));
     api.getParameterDefaults()
-      .then((d) => { setParamDefaults(d); setParams(d); })
+      // Merged UNDERNEATH whatever is already there: the kit's saved setup may land first, and
+      // it must win. Defaults only fill in keys nothing has set.
+      .then((d) => { setParamDefaults(d); setParams((p) => ({ ...d, ...p })); })
       .catch((e) => setParamsErr(e.message));
   }, []);
 
@@ -111,6 +118,39 @@ export default function Submit() {
     }
   }, [kit?.id]);   // fire once the kit resolves — incl. when ?kit= arrives before kits load
 
+  // Declared after the kit-seed effect on purpose: the saved sheet is the user's own work and
+  // must overwrite the defaults seeded from the kit, not the other way round. (It is also async,
+  // so it lands later regardless — the ordering is belt and braces.)
+  useEffect(() => {
+    if (!kit) { setSetupSavedAt(null); setSavedSnapshot(null); return; }
+    let stale = false;
+    setSetupMsg(null);
+    api.getKitSetup(kit.id).then((su) => {
+      if (stale || !su) { setSetupSavedAt(null); setSavedSnapshot(null); return; }
+      setSetupSavedAt(su.updated_at);
+      setTarget({
+        project_id: su.project_id ?? null,
+        default_population_id: su.default_population_id ?? null,
+        default_study_id: su.default_study_id ?? null,
+      });
+      if (su.expected_read_number) setExpectedReads(su.expected_read_number);
+      if (su.parameters) setParams((p) => ({ ...p, ...su.parameters }));
+      if (su.batches?.length) {
+        setBatches(su.batches.map((b) => ({
+          uid: batchSeq++,
+          name: b.name || "",
+          // A saved sheet can only carry a typed plate; an uploaded .xlsx is a File and cannot be.
+          sampleMode: b.sample_names_text ? "table" : "upload",
+          sampleFile: null,
+          sheetWells: null,
+          sampleRows: sampleTextToRows(b.sample_names_text),
+          selectedTags: b.selected_tags || [],
+        })));
+      }
+    }).catch(() => setSetupSavedAt(null));
+    return () => { stale = true; };
+  }, [kit?.id]);
+
   const setBatch = (uid, patch) =>
     setBatches((bs) => bs.map((b) => (b.uid === uid ? { ...b, ...patch } : b)));
 
@@ -135,6 +175,51 @@ export default function Submit() {
           : b
       )
     );
+
+  // Is there actually a FASTQ pair to run? Until now this was only discovered by pressing
+  // Submit and reading the refusal.
+  const readsReady =
+    fastqMode === "server" ? Boolean(serverReads)
+      : fastqMode === "upload" ? Boolean(fq1.file && fq2.file)
+        : Boolean(fq1.ref.trim() && fq2.ref.trim());
+
+  const setupPayload = () => ({
+    project_id: target.project_id,
+    default_population_id: target.default_population_id,
+    default_study_id: target.default_study_id,
+    expected_read_number: Number(expectedReads) || null,
+    parameters: params,
+    batches: batches.map((b) => ({
+      name: b.name || null,
+      selected_tags: b.selectedTags,
+      // Only a typed plate can be saved; an uploaded spreadsheet is a File on this machine.
+      sample_names_text:
+        b.sampleMode === "table" ? rowsToSampleText(b.sampleRows, controlsByPos) : null,
+    })),
+  });
+
+  // "Unsaved changes" compared against what was actually last written, rather than a guess:
+  // the snapshot is the payload as it stood at the last load or save.
+  const dirty = Boolean(kit) && savedSnapshot !== null
+    && JSON.stringify(setupPayload()) !== savedSnapshot;
+
+  const saveSetup = async () => {
+    if (!kit) return setErr("Choose a kit first — a setup is saved against one kit.");
+    setSetupBusy(true); setErr(null); setSetupMsg(null);
+    try {
+      const body = setupPayload();
+      const su = await api.saveKitSetup(kit.id, body);
+      setSetupSavedAt(su.updated_at);
+      setSavedSnapshot(JSON.stringify(body));
+      setSetupMsg("Saved.");
+      // Falls back to the timestamp rather than claiming "Saved." forever.
+      setTimeout(() => setSetupMsg(null), 3000);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSetupBusy(false);
+    }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -244,6 +329,10 @@ export default function Submit() {
   return (
     <div className="container">
       <h1>Analyse the data</h1>
+      <p className="muted small">
+        Fill this in whenever — <b>Save setup</b> keeps it against the kit, so the plate and
+        parameters are waiting when the sequencing comes back. Submitting needs a FASTQ pair.
+      </p>
       {warnings.length > 0 && (
         <div className="card warn-card warn-sticky">
           <b>⚠️ Check the plate before submitting</b>
@@ -454,7 +543,26 @@ export default function Submit() {
           {err && (
             <p className="submit-error" role="alert" ref={errRef}>{err}</p>
           )}
-          <button type="submit" disabled={busy || kit?.status === "analysed" || kitBusy}>{busy ? "Submitting…" : "Submit analysis"}</button>
+          <button type="submit"
+                  disabled={busy || !readsReady || kit?.status === "analysed" || kitBusy}>
+            {busy ? "Submitting…" : "Submit analysis"}
+          </button>{" "}
+          <button type="button" className="secondary" disabled={setupBusy || !kit}
+                  onClick={saveSetup}>
+            {setupBusy ? "Saving…" : "Save setup"}
+          </button>{" "}
+          {!readsReady && kit && (
+            <span className="muted small">
+              No FASTQ pair yet — <b>Save setup</b> keeps everything above for later.
+            </span>
+          )}
+          {setupMsg && <span className="ok small">✓ {setupMsg}</span>}
+          {!setupMsg && dirty && <span className="warn small">Unsaved changes</span>}
+          {!setupMsg && !dirty && setupSavedAt && (
+            <span className="muted small">
+              Setup saved {new Date(setupSavedAt).toLocaleString()}
+            </span>
+          )}
         </div>
       </form>
     </div>

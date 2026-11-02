@@ -14,6 +14,7 @@ h1 { font-size: 1.6rem; } h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
 .nav .brand { font-weight: 700; font-size: 1.1rem; }
 .nav nav { display: flex; gap: 1rem; align-items: center; }
 .nav-sep { color: var(--line); }
+.reads-links { display: inline-flex; gap: .8rem; flex-wrap: wrap; margin-left: .5rem; }
 /* Admin destinations in violet: brand blue is every other link, and red/amber already mean
    error and warning. Makes "am I about to change something for everyone?" visible at a glance. */
 .nav .nav-admin { color: #6d28d9; }
@@ -136,6 +137,8 @@ button.link { background: none; color: var(--err); padding: 0; }
 .markdown-body th { background: #f0f2f5; font-size: .9rem; }
 
 .error { color: var(--err); } .ok { color: var(--ok); }
+/* Amber text, matching .badge.warn — "needs attention" without claiming something failed. */
+.warn { color: #b45309; }
 .error-card { border-color: var(--err); }
 .error-card pre { white-space: pre-wrap; color: var(--err); }
 /* Sticky, so it needs to be opaque — it used to be transparent and content scrolled under it.

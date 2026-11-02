@@ -51,6 +51,8 @@ Open **My kits** from the top menu. Each kit is a pre-configured library — it 
 
 **Adding a kit.** Every kit ships with a **claim code** on its sticker, like `K7QF-3M9P-XR2A-WD6H`. Type it into the claim box on **My kits** and the kit appears in your list — no administrator step, and you can do it the moment the box arrives. If your kit arrives before you have an account, create the account first and then redeem the code here. A code works once: it belongs to whoever redeems it first.
 
+**Getting your reads back.** Once a FASTQ pair is stored for a kit, **download** next to it gives you both files back with their sizes shown. They come straight from storage, so the browser shows its own progress and can resume — but note these are large files, often more than a gigabyte each.
+
 **Kit status** tells you where a kit is in its lifecycle:
 
 | Status | What it means | What you can do |
@@ -66,7 +68,15 @@ Open **My kits** from the top menu. Each kit is a pre-configured library — it 
 
 ## 4. Starting an analysis
 
-Click **New analysis** in the top menu. The form has three parts: choose a kit, provide your FASTQ data, and describe your sample batches.
+Click **New analysis** in the top menu, or **Prepare analysis** / **▶ Run analysis** on a kit in **My kits**. The form has three parts: choose a kit, provide your FASTQ data, and describe your sample batches.
+
+### You can fill this in before your sequencing comes back
+
+**Save setup** stores everything on the page against that kit — the project, expected reads, the advanced parameters, and each batch's name, tag columns and 96-well plate. Come back any time and it is all still there, which matters most for the plate: 96 wells typed by hand used to disappear the moment you left the page.
+
+So the normal order is: prepare the sheet when you set the library up, then return and press **Submit analysis** once the FASTQ files exist. Until they do, the submit button stays disabled and says so.
+
+Two things to know. A plate **typed in** is saved; a plate **uploaded as a spreadsheet** is not, because the file lives on your computer rather than on the platform — pick the file again when you submit. And there is one setup per kit, so anyone else with access to that kit sees and can overwrite the same sheet.
 
 ### Step 1 — Choose your kit (library)
 

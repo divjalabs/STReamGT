@@ -25,6 +25,16 @@ export function rowsToSampleText(rows, controlsByPos = {}) {
     .join("\n");
 }
 
+/** The inverse of rowsToSampleText, for restoring a plate saved in a kit's analysis setup.
+ * Tolerant by design: a blank line, a missing name or a stray third field must not lose the rest. */
+export function sampleTextToRows(text) {
+  return (text || "")
+    .split("\n")
+    .map((line) => line.split(","))
+    .filter(([pos]) => pos && pos.trim())
+    .map(([pos, name]) => mkRow(pos.trim(), (name || "").trim()));
+}
+
 /** Warnings for the submit plate: duplicate names + defined control wells that were changed/cleared. */
 export function controlPlateWarnings(rows, controlsByPos = {}) {
   const warns = [];

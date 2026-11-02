@@ -170,6 +170,8 @@ You **cannot change or delete your own account** here, and the **last remaining 
 
 **A client never gets their password-reset email.** The reset page tells them whether the address is registered, so a typo says so immediately. If it says a link was sent and nothing arrives, ask them to check their spam folder first: the platform sends from `elena.pazhenkova@divjalabs.com` through Amazon SES, and until the `divjalabs.com` DNS carries SES's DKIM records plus `include:amazonses.com` in its SPF, that mail is unauthenticated and some providers will filter it. A genuine send failure is logged in CloudWatch (`/aws/lambda/streamgt-api`, search for "password-reset email failed"); nothing in the log means it was accepted for delivery and the problem is at the receiving end.
 
+**A client asks for their raw data back, or you need to check what they uploaded.** On **My kits**, the kit's reads line has a **download** control that hands over both FASTQ files. Anyone with access to the kit can use it, clients included — it is their own data. The files are served directly from storage with a link that is good for an hour.
+
 **Wrong panel or tags on a kit.** Panel choice and tag columns are set at kit creation. If they're wrong, delete the kit and re-register it with the correct panel/tags (make sure the correct panel exists first).
 
 **Low-read pauses.** If a client's job sits in **awaiting_confirmation**, that's the built-in low-read safety check — the client (not the admin) chooses **Run anyway** or **Cancel** on their job page. Reassure them it's expected when the FASTQ has fewer reads than the expected number they entered.

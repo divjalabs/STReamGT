@@ -225,6 +225,11 @@ export const api = {
   regenerateClaimCode: (id) => request(`/kits/${id}/claim-code`, { method: "POST" }),
   revokeClaim: (id) => request(`/kits/${id}/claim`, { method: "DELETE" }),
   getKitReads: (id) => request(`/kits/${id}/reads`),
+  // Returns presigned S3 links. Render them as plain <a href> — never downloadBlob, which
+  // buffers the whole response into a Blob: fine for a spreadsheet, fatal for a 1.5 GB FASTQ.
+  getKitReadsDownload: (id) => request(`/kits/${id}/reads/download`),
+  getKitSetup: (id) => request(`/kits/${id}/analysis-setup`),
+  saveKitSetup: (id, body) => request(`/kits/${id}/analysis-setup`, { method: "PUT", body }),
   setKitReads: (id, body) => request(`/kits/${id}/reads`, { method: "PUT", body }),
   deleteKitReads: (id) => request(`/kits/${id}/reads`, { method: "DELETE" }),
 

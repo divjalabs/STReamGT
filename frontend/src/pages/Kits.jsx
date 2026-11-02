@@ -7,13 +7,24 @@ const KIT_STATUS_CLASS = { analysed: "ok", reanalyse: "warn", received: "", sent
 const JOB_STATUS_CLASS = { succeeded: "ok", failed: "error", queued: "muted" };
 
 // Per-kit FASTQ reads: shows the saved pair (if any) and lets an admin/user upload or replace it.
+const GB = 1024 ** 3;
+const prettySize = (n) =>
+  n == null ? "" : n >= GB ? `${(n / GB).toFixed(2)} GB` : `${Math.round(n / 1024 / 1024)} MB`;
+
 function ReadsUploader({ kit, onChange }) {
   const [open, setOpen] = useState(false);
   const [f1, setF1] = useState(null);
   const [f2, setF2] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  // Links are fetched on demand rather than presigned for every kit on every page load.
+  const [links, setLinks] = useState(null);
   const reads = kit.reads;
+
+  const getLinks = async () => {
+    setErr(null);
+    try { setLinks(await api.getKitReadsDownload(kit.id)); } catch (e) { setErr(e.message); }
+  };
 
   const upload = async () => {
     if (!f1 || !f2) return setErr("Choose both R1 and R2 files.");
@@ -167,7 +178,13 @@ export default function Kits() {
                         ⭳ Plate template
                       </button>
                     )}
-                    {canRun && <Link to={`/submit?kit=${k.id}`}><button>▶ Run analysis</button></Link>}
+                    {canRun && (
+                      <Link to={`/submit?kit=${k.id}`}>
+                        {/* Same page either way — it is the analysis setup sheet, which can be
+                            filled in and saved long before the reads exist. */}
+                        <button>{k.reads ? "▶ Run analysis" : "Prepare analysis"}</button>
+                      </Link>
+                    )}
                     {k.status === "sent" && (
                       <button className="secondary" onClick={() => markReceived(k.id)}>Mark received</button>
                     )}
