@@ -433,7 +433,7 @@ def rerun_job(
     public_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user),
 ):
     """Re-run this job's analysis from the start (fresh head task, current pipeline image).
-    Reuses the same job + inputs; re-ingestion is idempotent (find-or-create by job_id+name)."""
+    Reuses the same job + inputs; re-ingestion is idempotent (find-or-create by (project, kit, name))."""
     job = _get_owned_job(public_id, db, current)
     if job.status != JobStatus.failed:
         raise HTTPException(status.HTTP_409_CONFLICT,
@@ -534,7 +534,7 @@ def ingest_job(
     db: Session = Depends(get_db), current: User = Depends(get_current_user),
 ):
     """Assign a completed job to a project/population/study and (re-)ingest its stored results into
-    the animal/sample store — no pipeline re-run. Idempotent (samples keyed by job_id + name)."""
+    the animal/sample store — no pipeline re-run. Idempotent (samples keyed by (project, kit, name))."""
     from app.models import Sample
     from app.services.ingestion import ingest_job_outputs
 
@@ -597,6 +597,56 @@ def get_results(
             url=storage.presign_get(rf.object_key, fname), view_url=view_url,
         ))
     return out
+
+
+@router.delete("/{public_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_job(
+    public_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)
+):
+    """Delete an analysis and the files it produced. Submitter or admin, as with results and stop.
+
+    Refuses while any sample still points at the run: those samples carry the genotypes, and this
+    is the one door in the application through which scientific data could be destroyed. A
+    superseded run owns nothing — re-ingestion re-points each specimen at the newest job
+    (services/ingestion.py) — which is exactly the case this exists for.
+
+    The sample check is explicit rather than left to the foreign key. Postgres would refuse it
+    (samples.job_id has no ON DELETE rule), but the test suite runs on SQLite with foreign keys
+    unenforced, where the row would vanish and leave samples pointing at an id that is gone.
+    """
+    job = _get_owned_job(public_id, db, current)
+
+    if job.status not in _TERMINAL_STATUSES:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This analysis is still running. Stop it first, then delete it.",
+        )
+
+    from app.models import Sample
+    n_samples = db.scalar(
+        select(func.count()).select_from(Sample).where(Sample.job_id == job.id)
+    )
+    if n_samples:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This analysis produced {n_samples} sample(s), which hold their genotypes. "
+            "Delete those from the project first, or delete the whole kit.",
+        )
+
+    # Collect the keys before the rows go: a batch's uploaded sample sheet lives under uploads/,
+    # outside the job's own results prefix.
+    sheet_keys = [b.sample_sheet_key for b in job.batches if b.sample_sheet_key]
+    prefix = job.storage_prefix
+
+    db.delete(job)          # batches and result_files are delete-orphan
+    db.commit()
+
+    # After the commit: if S3 fails we have an orphaned prefix (which a script can find), whereas
+    # deleting first and then failing to commit would destroy results a live job row still lists.
+    if prefix:
+        storage.delete_prefix(prefix.rstrip("/") + "/")
+    for key in sheet_keys:
+        storage.delete_object(key)
 
 
 @router.get("/{public_id}/batches/{batch_id}/plate.xlsx")

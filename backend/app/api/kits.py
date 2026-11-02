@@ -618,8 +618,47 @@ def update_kit(
     return kit
 
 
+@router.get("/{kit_id}/deletion-impact")
+def kit_deletion_impact(
+    kit_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)
+):
+    """What deleting this kit outright would destroy. Read-only; nothing is removed.
+
+    Exists so the confirmation can state the numbers rather than ask somebody to trust a button.
+    """
+    from app.services import kit_admin
+    kit = db.get(Kit, kit_id)
+    if kit is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kit not found")
+    return kit_admin.deletion_impact(db, kit)
+
+
+@router.delete("/{kit_id}/everything")
+def delete_kit_everything(
+    kit_id: int, confirm: str = "", db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Delete the kit, its analyses, its samples and every genotype derived from them.
+
+    `confirm` must be the kit's own code, which is how the project danger zone works: a URL that
+    could be fired by accident should not be able to destroy a lab's results. There is no undo —
+    the nightly database dump is the only way back.
+    """
+    from app.services import kit_admin
+    kit = db.get(Kit, kit_id)
+    if kit is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kit not found")
+    if confirm != kit.kit_code:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"To delete everything for this kit, confirm with its code ({kit.kit_code}).",
+        )
+    return kit_admin.delete_kit_everything(db, kit)
+
+
 @router.delete("/{kit_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_kit(kit_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Delete a kit that holds nothing. Use /everything for one that does."""
     from app.models import Job, Sample
     kit = db.get(Kit, kit_id)
     if kit is None:
@@ -630,6 +669,12 @@ def delete_kit(kit_id: int, db: Session = Depends(get_db), _: User = Depends(req
     if db.scalar(select(Job.id).where(Job.kit_id == kit.id).limit(1)) \
             or db.scalar(select(Sample.id).where(Sample.kit_id == kit.id).limit(1)):
         raise HTTPException(status.HTTP_409_CONFLICT,
-                            "This kit is in use (has analysis jobs or samples) and cannot be deleted.")
+                            "This kit is in use (has analysis jobs or samples) and cannot be deleted. "
+                            "Delete its analyses first, or use Delete everything.")
+    # Collect before the row goes. This used to delete the kit_reads row that holds the keys and
+    # leave the FASTQ pair itself — a couple of gigabytes per kit — orphaned in the bucket.
+    read_keys = [kit.reads.fastq1_key, kit.reads.fastq2_key] if kit.reads else []
     db.delete(kit)
     db.commit()
+    for key in read_keys:
+        storage.delete_object(key)

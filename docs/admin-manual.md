@@ -97,7 +97,15 @@ gets emailed around, and an unclaimed code is enough to take a kit. Codes come o
 
 ### Edit or delete a kit
 
-In the **All kits** table, click **edit** on a row to change its **status** and its **assigned users**, then **Save**. Use **delete** to remove a kit.
+In the **All kits** table, click **edit** on a row to change its **status** and its **assigned users**, then **Save**.
+
+**delete** removes a kit that holds nothing — no analyses, no samples. It also deletes the kit's stored FASTQ pair from storage, which it used to leave behind.
+
+If the kit *does* hold something, delete is refused and a **danger zone** opens instead. It asks the server what would be destroyed, states the numbers — samples, consensus genotypes, replicate observations, analysis runs, result files — and requires you to type the kit code before the button works. There is no undo; the nightly database dump is the only way back, so take a backup first if the kit matters.
+
+One consequence worth reading twice: **matching is per population, not per kit**. A kit's samples usually share their population with other kits', and removing them invalidates the animals that were built from that sample set — so the whole population's matching is cleared and has to be re-run, including animals formed from samples that are staying. The danger zone names the populations affected.
+
+To tidy up without destroying anything, delete a kit's **analyses** first (**My kits** → the kit's analysis list → **delete**). A run that no longer owns samples takes only its own result files with it, and once a kit has no analyses and no samples the ordinary **delete** will take it.
 
 A claimed kit also offers **release**, which hands it back: the claimer loses access and the kit shows as unclaimed again. The code printed on its sticker still works, so whoever should have had it can simply claim it — nothing needs reprinting. (If the sticker itself has gone astray, use **code** for a fresh one instead.)
 

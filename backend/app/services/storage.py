@@ -170,6 +170,54 @@ def object_size(key: str) -> int | None:
         return None
 
 
+def bucket_exists() -> bool:
+    """Whether the configured bucket is reachable — so a mistyped S3_BUCKET says so plainly."""
+    from botocore.exceptions import ClientError
+
+    try:
+        _client().head_bucket(Bucket=settings.s3_bucket)
+        return True
+    except ClientError:
+        return False
+
+
+def delete_prefix(prefix: str) -> tuple[int, int]:
+    """Delete every object under `prefix`. Returns (objects deleted, bytes freed).
+
+    Deliberately NOT best-effort, unlike delete_object: a half-deleted prefix that reported
+    success is how the bucket came to hold four result folders with no job behind them. If S3
+    refuses, the caller finds out.
+
+    Guards against an empty prefix, which would list — and delete — the whole bucket.
+    """
+    if not prefix or prefix in ("/", "*"):
+        raise ValueError(f"refusing to delete the prefix {prefix!r}: that is the whole bucket")
+
+    client = _client()
+    deleted = freed = 0
+    for page in client.get_paginator("list_objects_v2").paginate(
+        Bucket=settings.s3_bucket, Prefix=prefix
+    ):
+        contents = page.get("Contents") or []
+        if not contents:
+            continue
+        freed += sum(o["Size"] for o in contents)
+        # delete_objects takes at most 1000 keys per call, which is also the page size.
+        resp = client.delete_objects(
+            Bucket=settings.s3_bucket,
+            Delete={"Objects": [{"Key": o["Key"]} for o in contents], "Quiet": True},
+        )
+        errors = resp.get("Errors") or []
+        if errors:
+            first = errors[0]
+            raise RuntimeError(
+                f"could not delete {len(errors)} object(s) under {prefix!r}; "
+                f"first was {first.get('Key')}: {first.get('Message')}"
+            )
+        deleted += len(contents)
+    return deleted, freed
+
+
 def delete_object(key: str) -> None:
     """Best-effort delete (used when replacing a kit's stored reads)."""
     if not key:

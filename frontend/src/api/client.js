@@ -206,6 +206,10 @@ export const api = {
   createKit: (payload) => request("/kits", { method: "POST", body: payload }),
   updateKit: (id, body) => request(`/kits/${id}`, { method: "PATCH", body }),
   deleteKit: (id) => request(`/kits/${id}`, { method: "DELETE" }),
+  kitDeletionImpact: (id) => request(`/kits/${id}/deletion-impact`),
+  // The kit code has to be echoed back, so a URL fired by accident cannot destroy a lab's results.
+  deleteKitEverything: (id, kitCode) =>
+    request(`/kits/${id}/everything?confirm=${encodeURIComponent(kitCode)}`, { method: "DELETE" }),
   getTagLayout: () => request("/kits/tag-layout"),
   uploadTagLayout: (form) => request("/kits/tag-layout", { method: "POST", form }),
   downloadTagLayout: () => request("/kits/tag-layout/download"),
@@ -270,6 +274,7 @@ export const api = {
   reportJobError: (publicId, note) =>
     request(`/jobs/${publicId}/report-error`, { method: "POST", body: { note } }),
   getResults: (publicId) => request(`/jobs/${publicId}/results`),
+  deleteJob: (publicId) => request(`/jobs/${publicId}`, { method: "DELETE" }),
 
   // projects (animal/sample store)
   listProjects: () => request("/projects"),

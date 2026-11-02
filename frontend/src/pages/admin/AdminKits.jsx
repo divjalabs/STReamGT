@@ -21,6 +21,8 @@ export default function AdminKits() {
   const [sort, setSort] = useState({ key: "kit_code", dir: "asc" });
   const [exporting, setExporting] = useState(false);
   const [sheeting, setSheeting] = useState(false);
+  const [purge, setPurge] = useState(null);   // {kit, impact, typed, busy} — the danger zone
+  const [note, setNote] = useState(null);
   const [editId, setEditId] = useState(null);
   const [edit, setEdit] = useState({ status: "sent", assigned_user_ids: [] });
 
@@ -116,12 +118,42 @@ export default function AdminKits() {
   };
   const remove = async (k) => {
     setErr(null);
-    if (k.status === "analysed") {
-      alert(`Kit ${k.kit_code} has been analysed and cannot be deleted — its samples and analysis results depend on it.`);
-      return;
-    }
     if (!confirm(`Delete kit ${k.kit_code}?`)) return;
-    try { await api.deleteKit(k.id); load(); } catch (e) { setErr(e.message); }
+    try { await api.deleteKit(k.id); load(); }
+    catch (e) {
+      // The refusal already explains itself; offer the way through rather than a dead end.
+      setErr(e.message);
+      if (e.status === 409) openPurge(k);
+    }
+  };
+
+  // The danger zone: deleting a kit together with the genotypes it produced. Nothing is shown
+  // until the server has said what would go, and the button needs the kit code typed.
+  const openPurge = async (k) => {
+    setPurge({ kit: k, impact: null, typed: "", busy: false });
+    try {
+      setPurge((pg) => ({ ...pg, impact: "loading" }));
+      const impact = await api.kitDeletionImpact(k.id);
+      setPurge((pg) => (pg && pg.kit.id === k.id ? { ...pg, impact } : pg));
+    } catch (e) {
+      setErr(e.message);
+      setPurge(null);
+    }
+  };
+
+  const doPurge = async () => {
+    setPurge((pg) => ({ ...pg, busy: true }));
+    setErr(null);
+    try {
+      const out = await api.deleteKitEverything(purge.kit.id, purge.kit.kit_code);
+      setPurge(null);
+      setNote(`Deleted ${out.kit_code}: ${out.samples} sample(s), ${out.jobs} analysis(es), `
+              + `${out.objects_deleted} file(s), ${(out.bytes_freed / 1e6).toFixed(1)} MB freed.`);
+      load();
+    } catch (e) {
+      setErr(e.message);
+      setPurge((pg) => (pg ? { ...pg, busy: false } : pg));
+    }
   };
 
   return (
@@ -139,6 +171,51 @@ export default function AdminKits() {
         <Link to="/admin/kits/new"><button>＋ Register kit(s)</button></Link>
       </div>
       {err && <p className="error">{err}</p>}
+      {note && <p className="ok">{note}</p>}
+
+      {purge && (
+        <section className="card danger-box">
+          <h2>Delete {purge.kit.kit_code} and everything it produced</h2>
+          {purge.impact === "loading" || purge.impact === null ? (
+            <p className="muted">Working out what this would remove…</p>
+          ) : (
+            <>
+              <p>This permanently deletes:</p>
+              <ul>
+                <li><b>{purge.impact.samples}</b> sample(s), with{" "}
+                  <b>{purge.impact.consensus_genotypes}</b> consensus genotype(s) and{" "}
+                  <b>{purge.impact.replicate_observations}</b> replicate observation(s)</li>
+                <li><b>{purge.impact.jobs}</b> analysis run(s) and{" "}
+                  <b>{purge.impact.result_files}</b> result file(s)</li>
+                {purge.impact.has_stored_reads && <li>the kit's stored FASTQ pair</li>}
+              </ul>
+              {purge.impact.populations_whose_matching_is_cleared.length > 0 && (
+                <p className="warn">
+                  Matching is per population, so the animals in{" "}
+                  <b>{purge.impact.populations_whose_matching_is_cleared.join(", ")}</b>{" "}
+                  will be cleared and need matching again — including animals built from other
+                  kits' samples in the same population.
+                </p>
+              )}
+              <p className="muted small">
+                There is no undo. The nightly database dump is the only way back.
+              </p>
+              <label>Type <b>{purge.kit.kit_code}</b> to confirm
+                <input value={purge.typed} autoFocus
+                       onChange={(e) => setPurge({ ...purge, typed: e.target.value })} />
+              </label>
+              <div className="row">
+                <button className="danger" disabled={purge.busy || purge.typed !== purge.kit.kit_code}
+                        onClick={doPurge}>
+                  {purge.busy ? "Deleting…" : "Delete everything"}
+                </button>{" "}
+                <button className="secondary" disabled={purge.busy}
+                        onClick={() => setPurge(null)}>Cancel</button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
 
       <ClaimCodesCard rows={newCodes} onDismiss={() => setNewCodes([])} />
 

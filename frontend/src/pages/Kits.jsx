@@ -83,6 +83,15 @@ export default function Kits() {
   };
   useEffect(() => { load(); }, []);
 
+  // The server refuses while any sample still points at the run, so the worst a mis-click can
+  // remove is a superseded or failed analysis and its result files.
+  const removeJob = async (j) => {
+    setErr(null);
+    if (!confirm(`Delete analysis ${j.public_id.slice(0, 8)} and its result files? `
+                 + `This cannot be undone.`)) return;
+    try { await api.deleteJob(j.public_id); load(); } catch (e) { setErr(e.message); }
+  };
+
   const claim = async (e) => {
     e.preventDefault();
     setClaimMsg(null); setErr(null); setClaiming(true);
@@ -208,7 +217,9 @@ export default function Kits() {
                           <td>
                             <Link to={`/jobs/${j.public_id}`}>
                               {j.status === "succeeded" ? "see results →" : "see details →"}
-                            </Link>
+                            </Link>{" "}
+                            <button type="button" className="link"
+                                    onClick={() => removeJob(j)}>delete</button>
                           </td>
                         </tr>
                       ))}

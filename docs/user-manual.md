@@ -51,6 +51,8 @@ Open **My kits** from the top menu. Each kit is a pre-configured library — it 
 
 **Adding a kit.** Every kit ships with a **claim code** on its sticker, like `K7QF-3M9P-XR2A-WD6H`. Type it into the claim box on **My kits** and the kit appears in your list — no administrator step, and you can do it the moment the box arrives. If your kit arrives before you have an account, create the account first and then redeem the code here. A code works once: it belongs to whoever redeems it first.
 
+**Removing an old analysis.** Each run in a kit's list has a **delete** link, which removes the run and its result files for good. It is refused while the run still owns samples — those samples hold the genotypes — so what you can delete is the failed and superseded runs, which is usually what clutters the list. Re-running a kit re-points its samples at the newest run, so earlier ones generally become deletable on their own.
+
 **Getting your reads back.** Once a FASTQ pair is stored for a kit, **download** next to it gives you both files back with their sizes shown. They come straight from storage, so the browser shows its own progress and can resume — but note these are large files, often more than a gigabyte each.
 
 **Kit status** tells you where a kit is in its lifecycle:
