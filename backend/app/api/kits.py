@@ -18,11 +18,13 @@ from app.auth.deps import get_current_user, require_admin
 from app.schemas.kit import (
     KitCreate, KitUpdate, KitOut, KitSummary, KitReadsIn, KitReadsOut, ClaimRequest,
     KitBatchCreate, KitBatchOut, KitStickerRow, KitStickerSheetRequest,
+    KitSetupIn, KitSetupOut, ReadDownload,
 )
 from app.schemas.panel import TagLayoutOut
 from app.services import storage
 from app.services.kit_files import parse_tag_columns
 from app.services.kit_reads import set_kit_reads
+from app.services import kit_setup
 from app.services import claim_codes
 from app.services import kit_codes
 from app.services import ratelimit
@@ -273,6 +275,39 @@ def get_kit_reads(kit_id: int, db: Session = Depends(get_db), current: User = De
     return _reads_out(db, kit.reads) if kit.reads else None
 
 
+@router.get("/{kit_id}/reads/download", response_model=list[ReadDownload])
+def download_kit_reads(
+    kit_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)
+):
+    """Presigned links to the kit's FASTQ pair — the same gate as uploading them.
+
+    Until now an upload was write-only: presign_get was reachable only for results, the tag layout
+    and panel CSVs, so nobody could check what they had sent or retrieve their own raw data.
+
+    The size comes from S3 rather than from kit_reads, which records it only when the pair was
+    registered through PUT /reads and not when a submission adopted it. Asking S3 is true by
+    construction and doubles as a check that the object is still there before a link is handed out.
+    """
+    kit = _load_kit(kit_id, db, current)
+    if kit.reads is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This kit has no reads stored on the server.")
+
+    out = []
+    for key, name in ((kit.reads.fastq1_key, kit.reads.fastq1_name),
+                      (kit.reads.fastq2_key, kit.reads.fastq2_name)):
+        size = storage.object_size(key)
+        if size is None:
+            raise HTTPException(
+                status.HTTP_410_GONE,
+                "The stored reads are no longer in storage. Upload the pair again.",
+            )
+        filename = name or key.rsplit("/", 1)[-1]
+        out.append(ReadDownload(
+            filename=filename, url=storage.presign_get(key, filename), size_bytes=size,
+        ))
+    return out
+
+
 @router.put("/{kit_id}/reads", response_model=KitReadsOut)
 def put_kit_reads(
     kit_id: int, payload: KitReadsIn,
@@ -303,6 +338,58 @@ def delete_kit_reads(kit_id: int, db: Session = Depends(get_db), current: User =
         storage.delete_object(kit.reads.fastq2_key)
         db.delete(kit.reads)
         db.commit()
+
+
+# ---------- per-kit analysis setup (the sheet filled in before the FASTQ arrives) ----------
+
+def _setup_out(db: Session, row) -> KitSetupOut:
+    email = db.get(User, row.updated_by).email if row.updated_by else None
+    return KitSetupOut(
+        project_id=row.project_id,
+        default_population_id=row.default_population_id,
+        default_study_id=row.default_study_id,
+        expected_read_number=row.expected_read_number,
+        parameters=row.parameters,
+        batches=row.batches or [],
+        updated_at=row.updated_at,
+        updated_by_email=email,
+    )
+
+
+@router.get("/{kit_id}/analysis-setup", response_model=KitSetupOut | None)
+def get_kit_setup(
+    kit_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)
+):
+    """The saved setup for this kit's next run, or null if nobody has saved one."""
+    kit = _load_kit(kit_id, db, current)
+    return _setup_out(db, kit.analysis_setup) if kit.analysis_setup else None
+
+
+@router.put("/{kit_id}/analysis-setup", response_model=KitSetupOut)
+def put_kit_setup(
+    kit_id: int, payload: KitSetupIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    """Save the sheet. Deliberately accepts an incomplete one — it is a draft, not a submission.
+
+    None of POST /jobs' completeness rules are applied here (tag columns belonging to the kit, at
+    least one batch, a full 96-well plate). They still hold at submission; a half-finished sheet
+    that could not be saved would defeat the point.
+    """
+    kit = _load_kit(kit_id, db, current)
+    row = kit_setup.save_setup(
+        db, kit,
+        project_id=payload.project_id,
+        default_population_id=payload.default_population_id,
+        default_study_id=payload.default_study_id,
+        expected_read_number=payload.expected_read_number,
+        parameters=payload.parameters,
+        batches=[b.model_dump() for b in payload.batches],
+        updated_by=current.id,
+    )
+    db.commit()
+    db.refresh(row)
+    return _setup_out(db, row)
 
 
 @router.get("/{kit_id}", response_model=KitOut)

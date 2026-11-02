@@ -132,6 +132,40 @@ class KitReadsOut(KitReadsBrief):
     uploaded_by_email: str | None = None
 
 
+class ReadDownload(BaseModel):
+    """One half of a kit's FASTQ pair, with a presigned link the browser fetches directly."""
+
+    filename: str
+    url: str                 # attachment disposition; expires per settings.presign_expire_seconds
+    size_bytes: int | None = None
+
+
+class KitSetupBatch(BaseModel):
+    """A sample batch as drafted. Same shape as SampleBatchIn, minus its completeness rules."""
+
+    name: str | None = None
+    selected_tags: list[str] = []
+    sample_names_text: str | None = None
+
+
+class KitSetupIn(BaseModel):
+    """The whole sheet — every field is replaced on save, so send all of it."""
+
+    project_id: int | None = None
+    default_population_id: int | None = None
+    default_study_id: int | None = None
+    expected_read_number: int | None = None
+    parameters: dict | None = None
+    batches: list[KitSetupBatch] = Field(default_factory=list, max_length=20)
+
+
+class KitSetupOut(KitSetupIn):
+    model_config = ConfigDict(from_attributes=True)
+
+    updated_at: datetime
+    updated_by_email: str | None = None
+
+
 class KitStudyRef(BaseModel):
     """A study this kit is attached to — lets the Submit page pre-fill the ingestion target."""
     model_config = ConfigDict(from_attributes=True)

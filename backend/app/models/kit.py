@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
-    String, Integer, DateTime, ForeignKey, Enum as SAEnum, Table, Column, JSON, func,
+    String, Integer, BigInteger, DateTime, ForeignKey, Enum as SAEnum, Table, Column, JSON, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -151,6 +151,9 @@ class Kit(Base):
     reads: Mapped["KitReads | None"] = relationship(
         back_populates="kit", uselist=False, cascade="all, delete-orphan"
     )
+    analysis_setup: Mapped["KitAnalysisSetup | None"] = relationship(
+        back_populates="kit", uselist=False, cascade="all, delete-orphan"
+    )
     # Users granted access to this kit (non-admins). Admins see all kits regardless.
     users: Mapped[list["User"]] = relationship(secondary=kit_access)  # noqa: F821
 
@@ -184,6 +187,51 @@ class KitReads(Base):
     )
 
     kit: Mapped["Kit"] = relationship(back_populates="reads")
+
+
+class KitAnalysisSetup(Base):
+    """What the next analysis of this kit should look like, saved before the FASTQ exists.
+
+    The Analyse page used to hold all of this in browser state, so a run prepared in advance —
+    most painfully a 96-well plate typed by hand — was lost the moment the page was left. One row
+    per kit, overwritten in place, and it survives the run so a repeat starts from the same sheet.
+
+    Deliberately permissive: this is a draft, so none of the completeness rules that POST /jobs
+    enforces (tag columns belonging to the kit, at least one batch, a full plate) apply here. A
+    half-finished sheet has to be storable or the feature is useless.
+    """
+
+    __tablename__ = "kit_analysis_setups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kit_id: Mapped[int] = mapped_column(
+        ForeignKey("kits.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
+    # SET NULL rather than the plain FKs `jobs` uses: a job records what actually ran and should
+    # stand in the way of deleting its project, while a draft should just forget a target that
+    # has gone away.
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL")
+    )
+    default_population_id: Mapped[int | None] = mapped_column(
+        ForeignKey("populations.id", ondelete="SET NULL")
+    )
+    default_study_id: Mapped[int | None] = mapped_column(
+        ForeignKey("studies.id", ondelete="SET NULL")
+    )
+    expected_read_number: Mapped[int | None] = mapped_column(BigInteger)
+    # The full merged parameter set, as jobs.parameters stores it — a snapshot, not a diff.
+    parameters: Mapped[dict | None] = mapped_column(JSON)
+    # [{"name": ..., "selected_tags": [...], "sample_names_text": ...}] — the same shape as
+    # SampleBatchIn. JSON rather than rows: a draft needs no ordinals and no referential
+    # integrity, and the plate is already just text.
+    batches: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    kit: Mapped["Kit"] = relationship(back_populates="analysis_setup")
 
 
 class TagColumn(Base):

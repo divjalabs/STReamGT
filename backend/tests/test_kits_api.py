@@ -1,3 +1,7 @@
+import pytest
+from sqlalchemy import select
+
+from app.db import SessionLocal
 from tests.conftest import bearer, register, user_id, panel_id
 
 
@@ -306,3 +310,161 @@ def test_kit_list_exposes_description(client, catalog, admin_token):
     client.patch(f"/api/kits/{kit_id}", json={"description": "Wolf, 2026"}, headers=bearer(admin_token))
     kits = client.get("/api/kits", headers=bearer(admin_token)).json()
     assert next(k for k in kits if k["id"] == kit_id)["description"] == "Wolf, 2026"
+
+
+# ---------- the per-kit analysis setup ----------
+# The sheet a user fills in before the sequencing comes back. It must accept an INCOMPLETE sheet:
+# everything POST /jobs insists on (tags belonging to the kit, a batch, 96 filled wells) is
+# checked at submission, not here, or there would be nothing to save on a Tuesday afternoon.
+
+def _plate_text(n=3):
+    return "\n".join(f"A{i},SAMPLE{i}," for i in range(1, n + 1))
+
+
+def test_a_setup_round_trips_including_the_plate(client, catalog, admin_token):
+    kit_id = _register_kit(client, admin_token, [], code="SETUP1").json()["id"]
+    assert client.get(f"/api/kits/{kit_id}/analysis-setup",
+                      headers=bearer(admin_token)).json() is None
+
+    body = {
+        "expected_read_number": 12345678,
+        "parameters": {"negative_name": "blank", "discard_threshold": 7},
+        "batches": [{"name": "HRM01", "selected_tags": ["PP1", "PP2"],
+                     "sample_names_text": _plate_text(4)}],
+    }
+    r = client.put(f"/api/kits/{kit_id}/analysis-setup", json=body, headers=bearer(admin_token))
+    assert r.status_code == 200, r.text
+    assert r.json()["updated_by_email"] == "admin@x.com"
+
+    got = client.get(f"/api/kits/{kit_id}/analysis-setup", headers=bearer(admin_token)).json()
+    assert got["expected_read_number"] == 12345678
+    assert got["parameters"]["discard_threshold"] == 7
+    assert got["batches"][0]["name"] == "HRM01"
+    assert got["batches"][0]["selected_tags"] == ["PP1", "PP2"]
+    # the part that actually hurts to retype
+    assert got["batches"][0]["sample_names_text"] == _plate_text(4)
+
+
+def test_a_half_finished_sheet_saves(client, catalog, admin_token):
+    kit_id = _register_kit(client, admin_token, [], code="SETUP2").json()["id"]
+    for body in (
+        {},                                                        # nothing at all
+        {"batches": []},                                           # no batches
+        {"batches": [{"name": None, "selected_tags": []}]},        # a batch with nothing in it
+        {"batches": [{"name": "x", "selected_tags": ["PP9"],       # a tag the kit doesn't have
+                      "sample_names_text": _plate_text(1)}]},      # and 1 well, not 96
+    ):
+        r = client.put(f"/api/kits/{kit_id}/analysis-setup", json=body, headers=bearer(admin_token))
+        assert r.status_code == 200, f"{body} -> {r.text}"
+
+
+def test_saving_twice_updates_one_row(client, catalog, admin_token):
+    kit_id = _register_kit(client, admin_token, [], code="SETUP3").json()["id"]
+    for n in (1, 2, 3):
+        client.put(f"/api/kits/{kit_id}/analysis-setup",
+                   json={"expected_read_number": n}, headers=bearer(admin_token))
+    with SessionLocal() as db:
+        from app.models import KitAnalysisSetup
+        rows = db.scalars(select(KitAnalysisSetup).where(
+            KitAnalysisSetup.kit_id == kit_id)).all()
+    assert len(rows) == 1 and rows[0].expected_read_number == 3
+
+
+def test_the_setup_follows_the_same_access_rule_as_the_kit(client, catalog, admin_token):
+    tok = register(client, "outsider@x.com")
+    kit_id = _register_kit(client, admin_token, [], code="SETUP4").json()["id"]
+    assert client.get(f"/api/kits/{kit_id}/analysis-setup", headers=bearer(tok)).status_code == 403
+    assert client.put(f"/api/kits/{kit_id}/analysis-setup", json={},
+                      headers=bearer(tok)).status_code == 403
+
+
+def test_deleting_the_kit_takes_its_setup_with_it(client, catalog, admin_token):
+    kit_id = _register_kit(client, admin_token, [], code="SETUP5").json()["id"]
+    client.put(f"/api/kits/{kit_id}/analysis-setup", json={"expected_read_number": 1},
+               headers=bearer(admin_token))
+    assert client.delete(f"/api/kits/{kit_id}", headers=bearer(admin_token)).status_code == 204
+    with SessionLocal() as db:
+        from app.models import KitAnalysisSetup
+        assert db.scalars(select(KitAnalysisSetup).where(
+            KitAnalysisSetup.kit_id == kit_id)).all() == []
+
+
+# ---------- downloading a kit's reads ----------
+# Until this existed, an upload was write-only: presign_get was reachable only for results, the
+# tag layout and panel CSVs, so nobody could check what they had sent.
+
+@pytest.fixture()
+def s3_bucket():
+    """Real presigning against moto, so these exercise the same code path as production."""
+    import boto3
+    from moto import mock_aws
+    from app.config import settings
+    from app.services import storage
+
+    with mock_aws():
+        storage._client.cache_clear()
+        boto3.client("s3", region_name=settings.s3_region).create_bucket(
+            Bucket=settings.s3_bucket,
+            CreateBucketConfiguration={"LocationConstraint": settings.s3_region},
+        )
+        yield
+        storage._client.cache_clear()
+
+
+READ_BODY = b"@r1\nACGT\n+\n!!!!\n"
+
+
+def _kit_with_reads(client, admin_token, tok, email, code, body=READ_BODY):
+    from app.services import storage
+    kit_id = _register_kit(client, admin_token, [user_id(email)], code=code).json()["id"]
+    keys = [f"reads/kit/{kit_id}/u/{code}_1.fastq.gz", f"reads/kit/{kit_id}/u/{code}_2.fastq.gz"]
+    for k in keys:
+        storage.put_bytes(k, body)
+    r = client.put(f"/api/kits/{kit_id}/reads", headers=bearer(tok), json={
+        "fastq1_key": keys[0], "fastq2_key": keys[1],
+        "fastq1_name": f"{code}_1.fastq.gz", "fastq2_name": f"{code}_2.fastq.gz",
+    })
+    assert r.status_code == 200, r.text
+    return kit_id, keys
+
+
+def test_reads_can_be_downloaded_by_anyone_with_the_kit(client, catalog, admin_token, s3_bucket):
+    tok = register(client, "owner@x.com")
+    kit_id, _ = _kit_with_reads(client, admin_token, tok, "owner@x.com", "DL1")
+
+    r = client.get(f"/api/kits/{kit_id}/reads/download", headers=bearer(tok))
+    assert r.status_code == 200, r.text
+    pair = r.json()
+    assert [p["filename"] for p in pair] == ["DL1_1.fastq.gz", "DL1_2.fastq.gz"]
+    # the size is read from S3, not from kit_reads — which this PUT deliberately left unset
+    assert all(p["size_bytes"] == len(READ_BODY) for p in pair), pair
+    # a presigned GET, with the filename pushed into the download disposition
+    assert all("X-Amz-Signature" in p["url"] for p in pair)
+    assert "DL1_1.fastq.gz" in pair[0]["url"]
+
+
+def test_reads_download_is_refused_without_kit_access(client, catalog, admin_token, s3_bucket):
+    tok = register(client, "holder@x.com")
+    other = register(client, "nosy@x.com")
+    kit_id, _ = _kit_with_reads(client, admin_token, tok, "holder@x.com", "DL2")
+    assert client.get(f"/api/kits/{kit_id}/reads/download",
+                      headers=bearer(other)).status_code == 403
+
+
+def test_reads_download_says_so_when_there_is_nothing(client, catalog, admin_token, s3_bucket):
+    kit_id = _register_kit(client, admin_token, [], code="DL3").json()["id"]
+    r = client.get(f"/api/kits/{kit_id}/reads/download", headers=bearer(admin_token))
+    assert r.status_code == 404 and "no reads" in r.json()["detail"].lower()
+
+
+def test_reads_download_reports_a_vanished_object_rather_than_a_dead_link(
+    client, catalog, admin_token, s3_bucket
+):
+    """A presigned URL to a deleted object 404s at S3, long after the user clicked it."""
+    from app.services import storage
+    tok = register(client, "gone@x.com")
+    kit_id, keys = _kit_with_reads(client, admin_token, tok, "gone@x.com", "DL4")
+    storage.delete_object(keys[1])
+
+    r = client.get(f"/api/kits/{kit_id}/reads/download", headers=bearer(tok))
+    assert r.status_code == 410 and "no longer" in r.json()["detail"]

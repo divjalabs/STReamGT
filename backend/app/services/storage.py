@@ -155,6 +155,21 @@ def object_exists(key: str) -> bool:
         return False
 
 
+def object_size(key: str) -> int | None:
+    """The object's size in bytes, or None if it is not there.
+
+    Used when offering a FASTQ for download: kit_reads.size1/size2 is NULL for any pair registered
+    through the job-create path, and asking S3 is both true by construction and a check that the
+    object still exists before a link is handed out.
+    """
+    from botocore.exceptions import ClientError
+
+    try:
+        return _client().head_object(Bucket=settings.s3_bucket, Key=key)["ContentLength"]
+    except ClientError:
+        return None
+
+
 def delete_object(key: str) -> None:
     """Best-effort delete (used when replacing a kit's stored reads)."""
     if not key:
