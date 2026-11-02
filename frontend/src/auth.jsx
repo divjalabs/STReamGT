@@ -40,8 +40,8 @@ export function AuthProvider({ children }) {
     setToken(access_token);
     setUser(user);
   };
-  const register = async (email, password, organisation, claimCode) => {
-    const { access_token, user } = await api.register(email, password, organisation, claimCode);
+  const register = async (email, password, organisation) => {
+    const { access_token, user } = await api.register(email, password, organisation);
     setToken(access_token);
     setUser(user);
   };

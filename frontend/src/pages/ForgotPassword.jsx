@@ -11,9 +11,11 @@ export default function ForgotPassword() {
     e.preventDefault();
     setErr(null);
     try {
-      await api.forgotPassword(email);
+      await api.forgotPassword(email.trim());
       setSent(true);
     } catch (e) {
+      // 404 "No account found for that email." and 403 "That account is disabled…" both arrive
+      // as the server's own sentence, which is already what we want to show.
       setErr(e.message);
     }
   };
@@ -23,7 +25,10 @@ export default function ForgotPassword() {
       <h1>Reset password</h1>
       {sent ? (
         <div className="card">
-          <p>If an account exists for <b>{email}</b>, a reset link has been sent. Check your inbox.</p>
+          <p>A reset link has been sent to <b>{email.trim()}</b>. Check your inbox — the link works for one hour.</p>
+          <p className="muted small">
+            Nothing after a few minutes? Look in your spam folder, then contact your administrator.
+          </p>
         </div>
       ) : (
         <form onSubmit={submit} className="card">

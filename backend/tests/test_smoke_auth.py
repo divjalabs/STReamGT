@@ -76,3 +76,37 @@ def test_update_profile_and_change_password():
                        data={"username": "acct@b.com", "password": "origpass123"}).status_code == 401
     assert client.post("/api/auth/login",
                        data={"username": "acct@b.com", "password": "brandnew123"}).status_code == 200
+
+
+# --- what the email field actually accepts -------------------------------------------------
+# "You can write anything in the email field" was a reporting problem, not a validation one:
+# the frontend rendered the 422 body as raw JSON, so the rejection looked like a crash. These
+# pin the two halves the UI depends on — that bad addresses are refused, and the shape of the
+# refusal that client.js turns into a sentence.
+
+def test_a_malformed_email_is_refused_in_the_shape_the_ui_parses():
+    r = client.post("/api/auth/register", json={"email": "abc@def", "password": "password123"})
+    assert r.status_code == 422
+    err = r.json()["detail"][0]
+    assert err["loc"][-1] == "email", "client.js names the field from the last element of loc"
+    assert "valid email" in err["msg"]
+
+
+def test_capitals_cannot_create_a_second_account():
+    """EmailStr lowercases the domain but not the local part, so without normalising these would
+    be two accounts — and the second one would hold none of the first one's kits."""
+    first = client.post(
+        "/api/auth/register", json={"email": "Mixed.Case@Lab.ORG", "password": "password123"}
+    )
+    assert first.status_code == 201
+    assert first.json()["user"]["email"] == "mixed.case@lab.org"
+
+    again = client.post(
+        "/api/auth/register", json={"email": "mixed.case@lab.org", "password": "password123"}
+    )
+    assert again.status_code == 409
+
+    # and the address logs in however it is typed
+    for typed in ("Mixed.Case@Lab.ORG", "mixed.case@lab.org", "MIXED.CASE@LAB.ORG"):
+        r = client.post("/api/auth/login", data={"username": typed, "password": "password123"})
+        assert r.status_code == 200, typed

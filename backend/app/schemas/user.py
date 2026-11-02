@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 
 from app.models.enums import UserRole
 
@@ -11,7 +11,14 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     organisation: str | None = None
-    claim_code: str | None = None        # optional: redeem a kit right after sign-up
+
+    @field_validator("email")
+    @classmethod
+    def _lowercase(cls, v: str) -> str:
+        """EmailStr lowercases the domain but keeps the local part, so without this
+        Elena@divjalabs.com and elena@divjalabs.com are two different accounts: the duplicate check
+        misses, and the lab ends up with a second login holding none of their kits."""
+        return v.lower()
 
 
 class UserOut(BaseModel):

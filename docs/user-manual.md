@@ -27,9 +27,19 @@ STReamGT takes the raw sequencing data (FASTQ files) from your kit and turns it 
 2.  Enter your **email**, a **password** (at least 8 characters), and your **organisation** (optional).
 3.  Click **Register**. You're logged in immediately and taken to your dashboard.
 
+Use a real address you can read: it is where analysis results and password-reset links are sent. If the form says the address doesn't look valid, it is checking the format only — a typo in a real-looking address will still be accepted, so read it back before continuing.
+
 ### Log in later
 
-Use **Log in** with the same email and password. Use **Log out** (top-right) when you're done.
+Use **Log in** with the same email and password. Capitals don't matter in the address. Use **Log out** (top-right) when you're done.
+
+### Forgotten password
+
+Click **Forgot password?** on the log-in page and enter your address. If there is an account, a reset link is emailed to you and works **for one hour**; open it and choose a new password.
+
+- "No account found for that email" means the address is not registered — check for a typo, or that you signed up with a different address.
+- "That account is disabled" means an administrator has deactivated it; contact them.
+- The page says a link was sent but nothing arrives: check your spam folder, then contact your administrator — mail delivery can be blocked at their end.
 
 > Your account starts empty. You add a kit by redeeming the claim code printed on its sticker — see the next section.
 
@@ -39,7 +49,7 @@ Use **Log in** with the same email and password. Use **Log out** (top-right) whe
 
 Open **My kits** from the top menu. Each kit is a pre-configured library — it already knows which genetic markers and tag layout to use, so you don't have to configure anything.
 
-**Adding a kit.** Every kit ships with a **claim code** on its sticker, like `K7QF-3M9P-XR2A-WD6H`. Type it into the claim box on **My kits** and the kit appears in your list — no administrator step, and you can do it the moment the box arrives. (The code box is also on the sign-up form, if your kit arrives before you have an account.) A code works once: it belongs to whoever redeems it first.
+**Adding a kit.** Every kit ships with a **claim code** on its sticker, like `K7QF-3M9P-XR2A-WD6H`. Type it into the claim box on **My kits** and the kit appears in your list — no administrator step, and you can do it the moment the box arrives. If your kit arrives before you have an account, create the account first and then redeem the code here. A code works once: it belongs to whoever redeems it first.
 
 **Kit status** tells you where a kit is in its lifecycle:
 

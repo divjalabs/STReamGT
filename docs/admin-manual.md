@@ -159,6 +159,8 @@ You **cannot change your own account** here (no self-demotion or self-deactivati
 
 **A client can't see their kit.** Confirm the kit exists and that they redeemed its claim code — the **Claimed by** column on the **Kits** page shows who holds it. If it was claimed by the wrong account, **Kits → edit** can grant the right person access. Also confirm the account is **active** on the **Users** page.
 
+**A client never gets their password-reset email.** The reset page now tells them whether the address is registered, so a typo says so immediately. If it says a link was sent and nothing arrives, the send is failing rather than the address: the platform's email is still in the AWS SES **sandbox**, which only delivers to verified addresses, so mail to clients is rejected. Until production access is granted, reset a client's password by having them tell you a new one, or deactivate and re-register the account. The failure is logged in CloudWatch (`/aws/lambda/streamgt-api`, search for "password-reset email failed").
+
 **Wrong panel or tags on a kit.** Panel choice and tag columns are set at kit creation. If they're wrong, delete the kit and re-register it with the correct panel/tags (make sure the correct panel exists first).
 
 **Low-read pauses.** If a client's job sits in **awaiting_confirmation**, that's the built-in low-read safety check — the client (not the admin) chooses **Run anyway** or **Cancel** on their job page. Reassure them it's expected when the FASTQ has fewer reads than the expected number they entered.

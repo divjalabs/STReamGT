@@ -48,10 +48,39 @@ async function request(path, { method = "GET", body, form, retries } = {}) {
     } catch {
       detail = res.statusText;
     }
-    throw apiError(typeof detail === "string" ? detail : JSON.stringify(detail), res.status);
+    throw apiError(readableDetail(detail, res.status), res.status);
   }
   if (res.status === 204) return null;
   return res.json();
+}
+
+/**
+ * Turn an error body into one sentence a person can act on.
+ *
+ * FastAPI's own errors put a string in `detail`, but a 422 from pydantic puts a *list* of
+ * {loc, msg, type} objects there. This used to be JSON.stringify'd straight onto the page, so
+ * typing a bad email gave a wall of JSON ending in an errors.pydantic.dev link — which reads like
+ * the app broke, not like the address was rejected. That is why the email check looked absent.
+ */
+function readableDetail(detail, status) {
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((e) => {
+        if (!e || typeof e.msg !== "string") return null;
+        // loc is ["body", "email"]; the last element is the field, unless the whole body failed.
+        const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : null;
+        // Pydantic prefixes its email errors with the value-error boilerplate; drop it so the
+        // sentence reads "Email: An email address must have an @-sign."
+        const msg = e.msg.replace(/^value is not a valid [^:]+:\s*/i, "");
+        if (!field || field === "body") return msg;
+        const label = String(field).replace(/_/g, " ");
+        return `${label.charAt(0).toUpperCase()}${label.slice(1)}: ${msg}`;
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join("; ");
+  }
+  return `Request failed (${status})`;
 }
 
 /** An Error carrying the HTTP status, so callers can tell "wrong password" from "server down". */
@@ -133,8 +162,8 @@ async function downloadBlob(path, filename) {
 
 export const api = {
   // auth
-  register: (email, password, organisation, claimCode) =>
-    request("/auth/register", { method: "POST", body: { email, password, organisation, claim_code: claimCode || null } }),
+  register: (email, password, organisation) =>
+    request("/auth/register", { method: "POST", body: { email, password, organisation } }),
   login: async (email, password) => {
     const form = new URLSearchParams({ username: email, password });
     const res = await fetch("/api/auth/login", {

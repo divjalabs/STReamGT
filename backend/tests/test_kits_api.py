@@ -201,18 +201,29 @@ def test_regenerate_and_revoke(client, catalog, admin_token):
     assert client.get("/api/kits", headers=bearer(tok)).json() == []
 
 
-def test_register_with_claim_code(client, catalog, admin_token):
+def test_signing_up_no_longer_takes_a_kit_code(client, catalog, admin_token):
+    """There is one way into a kit now: redeem the code from My kits once you are logged in.
+
+    A stray claim_code in the body must be ignored rather than honoured — not rejected either,
+    so an old client or script does not start failing at sign-up.
+    """
     code = _register_kit(client, admin_token, [], code="ONBOARD").json()["claim_code"]
     r = client.post("/api/auth/register",
                     json={"email": "new@x.com", "password": "password123", "claim_code": code})
     assert r.status_code == 201
     tok = r.json()["access_token"]
+    assert client.get("/api/kits", headers=bearer(tok)).json() == []
+
+    # ...and the code is untouched, so it still works from the kits page.
+    assert client.post("/api/kits/claim", json={"code": code}, headers=bearer(tok)).status_code == 200
     assert [k["kit_code"] for k in client.get("/api/kits", headers=bearer(tok)).json()] == ["ONBOARD"]
-    # a bad code rolls back the signup entirely
+
+    # A nonsense code no longer costs anybody their account: sign-up does not look at it.
     bad = client.post("/api/auth/register",
                       json={"email": "nope@x.com", "password": "password123", "claim_code": "BADX-BADX-BADX-BADX"})
-    assert bad.status_code == 404
-    assert client.post("/api/auth/login", data={"username": "nope@x.com", "password": "password123"}).status_code == 401
+    assert bad.status_code == 201
+    assert client.post("/api/auth/login",
+                       data={"username": "nope@x.com", "password": "password123"}).status_code == 200
 
 
 def test_access_control(client, catalog, admin_token):
