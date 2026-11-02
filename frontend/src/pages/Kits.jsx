@@ -139,7 +139,7 @@ export default function Kits() {
         </div>
       )}
       {!kits ? <p>Loading…</p> : kits.length === 0 ? (
-        <p className="muted">No kits assigned to you yet. An admin registers and assigns kits.</p>
+        <p className="muted">No kits yet — add one with the claim code from its sticker, above.</p>
       ) : shown.length === 0 ? (
         <p className="muted">No kits match your filters.</p>
       ) : (

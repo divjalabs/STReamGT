@@ -14,6 +14,9 @@ h1 { font-size: 1.6rem; } h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
 .nav .brand { font-weight: 700; font-size: 1.1rem; }
 .nav nav { display: flex; gap: 1rem; align-items: center; }
 .nav-sep { color: var(--line); }
+/* Admin destinations in violet: brand blue is every other link, and red/amber already mean
+   error and warning. Makes "am I about to change something for everyone?" visible at a glance. */
+.nav .nav-admin { color: #6d28d9; }
 .spacer { flex: 1; }
 .muted { color: var(--muted); }
 
@@ -135,8 +138,14 @@ button.link { background: none; color: var(--err); padding: 0; }
 .error { color: var(--err); } .ok { color: var(--ok); }
 .error-card { border-color: var(--err); }
 .error-card pre { white-space: pre-wrap; color: var(--err); }
-.submit-bar { position: sticky; bottom: 0; padding: 1rem 0; }
+/* Sticky, so it needs to be opaque — it used to be transparent and content scrolled under it.
+   The submit error lives in here: at the top of the page it was scrolled out of sight on a
+   filled-in form, so a refused submission looked like nothing at all had happened. */
+.submit-bar { position: sticky; bottom: 0; padding: 1rem 0; background: var(--bg);
+  border-top: 1px solid var(--line); }
 .submit-bar button { font-size: 1.05rem; padding: .6rem 1.4rem; }
+.submit-error { margin: 0 0 .6rem; padding: .55rem .8rem; border: 1px solid var(--err);
+  border-left-width: 4px; border-radius: 4px; background: #fef2f2; color: var(--err); }
 
 /* highlighted table row (sample report selection) */
 tr.selected > td { background: rgba(80, 140, 255, 0.12); }

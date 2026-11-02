@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, uploadFile } from "../api/client.js";
 import { isTerminal } from "../config/jobs.js";
@@ -22,6 +22,7 @@ export default function Submit() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const [kits, setKits] = useState([]);
+  const [kitsLoaded, setKitsLoaded] = useState(false);
   const [kitId, setKitId] = useState(searchParams.get("kit") || "");
   const [fastqMode, setFastqMode] = useState("upload"); // "upload" | "server" | "ref"
   const [fq1, setFq1] = useState({ file: null, ref: "", pct: 0 });
@@ -33,13 +34,23 @@ export default function Submit() {
   const [jobs, setJobs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const errRef = useRef(null);
   const [paramDefaults, setParamDefaults] = useState(null);
   const [params, setParams] = useState({});
   const [paramsErr, setParamsErr] = useState(null);  // defaults unreadable -> say so, don't hide
   const [jobsErr, setJobsErr] = useState(null);      // can't tell whether a run is already going
 
+  // The submit bar is sticky to the bottom, but it is still below the fold while the page is
+  // scrolled up. Bring the message to the eye rather than hoping it is already there.
   useEffect(() => {
-    api.listKits().then(setKits).catch((e) => setErr(e.message));
+    if (err) errRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [err]);
+
+  useEffect(() => {
+    api.listKits()
+      .then(setKits)
+      .catch((e) => setErr(e.message))
+      .finally(() => setKitsLoaded(true));
     // A failure here silently re-enabled submitting while another run was in flight.
     api.listJobs().then(setJobs).catch((e) => setJobsErr(e.message));
     api.getParameterDefaults()
@@ -212,10 +223,27 @@ export default function Submit() {
     }
   };
 
+  // Reaching this page with no kits used to render the whole form around an empty kit dropdown,
+  // and only said "Choose a kit" after everything had been filled in.
+  if (kitsLoaded && kits.length === 0) {
+    return (
+      <div className="container narrow">
+        <h1>Analyse the data</h1>
+        <div className="card claim-hero">
+          <b>You don't have a kit yet</b>
+          <p className="muted small">
+            An analysis runs against a kit. Every kit ships with a <b>claim code</b> on its
+            sticker — enter it on <b>My kits</b> to add the kit to your account, then come back.
+          </p>
+          <Link to="/kits"><button>Add your kit</button></Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container">
       <h1>Analyse the data</h1>
-      {err && <p className="error">{err}</p>}
       {warnings.length > 0 && (
         <div className="card warn-card warn-sticky">
           <b>⚠️ Check the plate before submitting</b>
@@ -250,9 +278,12 @@ export default function Submit() {
         </section>
 
         <section className="card">
-          <h2>Assign to project <span className="muted small">(optional — for consensus &amp; matching)</span></h2>
-          <p className="muted small">On success, the samples are assigned to this project/population so
-            you can run consensus and matching. Leave blank to only produce result files.
+          <h2>Assign to project <span className="muted small">(optional)</span></h2>
+          <p className="muted small">A project is where this run's samples are kept so they can be
+            compared with your other libraries: allele names are curated per project, so the same
+            allele keeps the same name across runs, and matching samples into individuals happens
+            within a project. Leave it blank and the run still produces every result file — you can
+            assign it afterwards from the analysis page, with no re-run.
             {kit && kit.studies && kit.studies.length === 1 && " Pre-filled from this kit's linked study."}</p>
           <TargetPicker value={target} onChange={setTarget} disabled={busy} />
         </section>
@@ -416,7 +447,13 @@ export default function Submit() {
           </details>
         )}
 
+        {/* The error lives HERE, not at the top of the page: the bar is sticky to the bottom of
+            the viewport, so on a filled-in form a message at the top is scrolled out of sight and
+            a refused submission looks like nothing happened. */}
         <div className="submit-bar">
+          {err && (
+            <p className="submit-error" role="alert" ref={errRef}>{err}</p>
+          )}
           <button type="submit" disabled={busy || kit?.status === "analysed" || kitBusy}>{busy ? "Submitting…" : "Submit analysis"}</button>
         </div>
       </form>

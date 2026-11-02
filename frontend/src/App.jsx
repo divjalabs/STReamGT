@@ -65,9 +65,9 @@ function Nav() {
         <Link to="/kits">My kits</Link>
         <Link to="/projects">Projects</Link>
         {isAdmin && <span className="nav-sep">·</span>}
-        {isAdmin && <Link to="/admin/kits">Kits</Link>}
-        {isAdmin && <Link to="/admin/panels">Panels</Link>}
-        {isAdmin && <Link to="/admin/users">Users</Link>}
+        {isAdmin && <Link to="/admin/kits" className="nav-admin">Kits</Link>}
+        {isAdmin && <Link to="/admin/panels" className="nav-admin">Panels</Link>}
+        {isAdmin && <Link to="/admin/users" className="nav-admin">Users</Link>}
       </nav>
       <span className="spacer" />
       <Link to="/account" className="muted">{user.email}{isAdmin ? " (admin)" : ""}</Link>

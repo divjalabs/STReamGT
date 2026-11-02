@@ -7,10 +7,16 @@ export default function Home() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [projects, setProjects] = useState(null);
+  // Needed to know whether an analysis is even possible: offering "New analysis" to someone with
+  // no kits sent them to a form they could only fail to fill in.
+  const [kits, setKits] = useState(null);
 
   useEffect(() => {
     api.listProjects().then(setProjects).catch(() => setProjects([]));
+    api.listKits().then(setKits).catch(() => setKits([]));
   }, []);
+
+  const noKits = kits !== null && kits.length === 0;
 
   return (
     <div className="container">
@@ -27,10 +33,20 @@ export default function Home() {
         </p>
       </div>
 
-      <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
-        <Link to="/submit"><button>New analysis</button></Link>
-        <Link to="/kits"><button className="secondary">My kits &amp; analyses</button></Link>
-      </div>
+      {noKits ? (
+        <div className="card claim-hero">
+          <b>Start by adding your kit</b>
+          <p className="muted small">
+            Every kit ships with a <b>claim code</b>. Enter it and you can run the analysis.
+          </p>
+          <Link to="/kits"><button>Add your kit</button></Link>
+        </div>
+      ) : (
+        <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
+          <Link to="/submit"><button>New analysis</button></Link>
+          <Link to="/kits"><button className="secondary">My kits &amp; analyses</button></Link>
+        </div>
+      )}
 
       <div className="section-head" style={{ marginTop: "1.8rem" }}>
         <h2>My projects</h2>
