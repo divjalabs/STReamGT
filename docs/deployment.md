@@ -69,8 +69,16 @@ role automatically).
 - Allocate an **Elastic IP** and associate it (stable address for DNS).
 
 ### 1d. SES (email)
-- Verify the domain (or at least `no-reply@streamgt.yourlab.org`) in SES.
-- Request **production access** (SES starts in sandbox — can only send to verified addresses).
+- Verify the domain (or at least the one address you send as) in SES.
+- Request **production access** — SES starts in sandbox, where it delivers only to verified
+  addresses, so every client address is rejected. **Done for this account on 2026-11-02**
+  (`aws sesv2 get-account` → `ProductionAccessEnabled: true`, 50k/day, 14/sec).
+- Add the DNS records that make the mail *authenticated*, which production access does not do:
+  SES's three DKIM CNAMEs (`<token>._domainkey.<domain>` → `<token>.dkim.amazonses.com`, from
+  `aws sesv2 get-email-identity --email-identity <domain>`) and `include:amazonses.com` in the
+  domain's SPF TXT record. Without them SPF and DKIM both fail and providers may filter the mail.
+  **Still outstanding for `divjalabs.com`** — the identity exists but its DKIM status is FAILED
+  because the CNAMEs are not in DNS, and the SPF record does not include SES.
 - Create **SMTP credentials** (SES → SMTP settings). You'll use host
   `email-smtp.eu-central-1.amazonaws.com`, port `587`, TLS on.
 
