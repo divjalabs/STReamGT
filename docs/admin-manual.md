@@ -99,7 +99,9 @@ gets emailed around, and an unclaimed code is enough to take a kit. Codes come o
 
 In the **All kits** table, click **edit** on a row to change its **status** and its **assigned users**, then **Save**. Use **delete** to remove a kit.
 
-Kits reach people by claim code, which is why the table shows **Claimed by** and why the register form has no assignee field. The picker here is the exception that remains: use it to give someone access to a kit they did not claim — most often a kit claimed by the wrong account.
+A claimed kit also offers **release**, which hands it back: the claimer loses access and the kit shows as unclaimed again. The code printed on its sticker still works, so whoever should have had it can simply claim it — nothing needs reprinting. (If the sticker itself has gone astray, use **code** for a fresh one instead.)
+
+Kits reach people by claim code, which is why the table shows **Claimed by** and why the register form has no assignee field. The assignee picker here is the other exception: use it to give someone access to a kit they did not claim, where **release** would be the wrong tool because the kit is already with the right person.
 
 ------------------------------------------------------------------------
 
@@ -148,7 +150,7 @@ Open **Users** from the top menu to see every account with its email, organisati
 
 **Delete refuses rather than destroying work.** If the account has submitted an analysis, owns a project, claimed or registered a kit, uploaded reads, saved a control template, started a matching run or hand-edited a genotype, you get a message naming what is in the way — for example *"Cannot delete bob@lab.org: it has 3 analyses, 1 project. Deactivate the account instead."* Nothing is deleted in that case. The one thing deletion does take with it is the account's kit access, which is the point: a kit someone was given access to but never claimed is unaffected, it simply stops being theirs.
 
-If a client account is blocked only by a **claimed kit** and you genuinely want it gone, the claim has to be released first. There is no button for this yet — it is `DELETE /api/kits/{kit_id}/claim`, which detaches the claimer and leaves the printed claim code working, so the kit can be claimed again by the right person.
+If a client account is blocked only by a **claimed kit** and you genuinely want it gone, release the claim first: **Kits** → the kit's row → **release** ([Section 3](#3-kits)). That detaches the claimer and leaves the printed claim code working, so the kit can be claimed again by the right person.
 
 You **cannot change or delete your own account** here, and the **last remaining admin** cannot be demoted, deactivated or deleted by anyone — otherwise nobody would be able to reach these screens again. Ask another admin if you need your own account changed.
 

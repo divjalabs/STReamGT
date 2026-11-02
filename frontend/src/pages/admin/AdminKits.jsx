@@ -95,6 +95,17 @@ export default function AdminKits() {
     catch (e) { setErr(e.message); }
   };
 
+  // Hand a kit back so the right person can claim it. The endpoint clears claimed_by and the
+  // access grant but leaves the code's hash alone, so the sticker already on the box still works.
+  const release = async (k) => {
+    setErr(null);
+    if (!confirm(
+      `Release ${k.claimed_by_email}'s claim on ${k.kit_code}? They lose access to it. `
+      + `The code on its sticker still works, so the right person can claim it.`
+    )) return;
+    try { await api.revokeClaim(k.id); load(); } catch (e) { setErr(e.message); }
+  };
+
   const startEdit = (k) => {
     setEditId(k.id);
     // Don't send `description` at all — this form doesn't edit it, and sending "" wiped it.
@@ -177,6 +188,11 @@ export default function AdminKits() {
               <td>
                 <button className="secondary" onClick={() => startEdit(k)}>edit</button>{" "}
                 <button className="linkish" onClick={() => regenCode(k.id)}>code</button>{" "}
+                {k.claimed_by_email && (
+                  <>
+                    <button className="linkish" onClick={() => release(k)}>release</button>{" "}
+                  </>
+                )}
                 <button className="link" onClick={() => remove(k)}>delete</button>
               </td>
             </tr>

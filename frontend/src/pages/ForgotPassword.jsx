@@ -6,10 +6,14 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState(null);
+  // Without this a double-click sends twice and issues two links, both live for an hour.
+  const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
+    if (busy) return;
     setErr(null);
+    setBusy(true);
     try {
       await api.forgotPassword(email.trim());
       setSent(true);
@@ -17,6 +21,8 @@ export default function ForgotPassword() {
       // 404 "No account found for that email." and 403 "That account is disabled…" both arrive
       // as the server's own sentence, which is already what we want to show.
       setErr(e.message);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -35,7 +41,7 @@ export default function ForgotPassword() {
           {err && <p className="error">{err}</p>}
           <p className="muted">Enter your email and we'll send you a link to reset your password.</p>
           <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-          <button type="submit">Send reset link</button>
+          <button type="submit" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</button>
         </form>
       )}
       <p className="muted"><Link to="/login">Back to log in</Link></p>
