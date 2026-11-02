@@ -151,5 +151,6 @@ erDiagram
 ## Notes
 
 - **Cascade deletes:** deleting a panel removes its primers; deleting a kit removes its tag_columns, controls, and kit_access rows; deleting a job removes its sample_batches and result_files.
+- **Deleting a user is deliberately almost impossible.** Of the foreign keys pointing at `users.id`, only `kit_access.user_id` and `project_access.user_id` are `ON DELETE CASCADE` — access grants, which should go with the account. Every other one (`jobs.user_id` and `projects.owner_user_id`, both NOT NULL, plus the nullable `kits.claimed_by`/`created_by`, `kit_reads.uploaded_by`, `control_templates.created_by`, `matching_runs.triggered_by`, `consensus_genotypes.edited_by`, `consensus_edit_log.user_id`) is `NO ACTION`, so Postgres *refuses* the delete rather than orphaning or nulling the row. `DELETE /api/users/{id}` counts those dependents first and answers 409 naming them; `backend/tests/test_panels_users.py` asserts the dependents survive a refusal, so adding a `CASCADE` here would fail the suite.
 - **S3, not the DB:** large data (FASTQ, sample sheets, primer/tag CSVs, results) live in S3; the DB stores only object keys/paths (`*_key`, `*_ref`, `object_key`).
 - **Enums:** `role`, `status` (kit + job), `fastq_source`, `primer type`, `control kind`, and `result kind` are defined in `backend/app/models/enums.py`.

@@ -14,11 +14,23 @@ export default function AdminUsers() {
     try { await api.updateUser(id, body); load(); } catch (e) { setErr(e.message); }
   };
 
+  // The server refuses to delete an account that anything points at, and says what it has, so a
+  // mis-click can only remove an account that never did anything.
+  const remove = async (u) => {
+    setErr(null);
+    if (!confirm(`Delete ${u.email}? This cannot be undone.`)) return;
+    try { await api.deleteUser(u.id); load(); } catch (e) { setErr(e.message); }
+  };
+
   return (
     <div className="container">
       <h1>Users (admin)</h1>
       {err && <p className="error">{err}</p>}
-      <p className="muted">Promote clients to admin or deactivate accounts. Assign kits on the Kits page.</p>
+      <p className="muted">
+        Promote clients to admin, or deactivate an account to block it immediately while keeping
+        its records. <b>Delete</b> only works on an account that holds nothing — the server says
+        what is in the way otherwise.
+      </p>
       <table className="table">
         <thead><tr><th>Email</th><th>Organisation</th><th>Role</th><th>Active</th><th></th></tr></thead>
         <tbody>
@@ -38,7 +50,8 @@ export default function AdminUsers() {
                       </button>{" "}
                       <button className="link" onClick={() => patch(u.id, { is_active: !u.is_active })}>
                         {u.is_active ? "Deactivate" : "Activate"}
-                      </button>
+                      </button>{" "}
+                      <button className="link" onClick={() => remove(u)}>Delete</button>
                     </>
                   )}
                 </td>

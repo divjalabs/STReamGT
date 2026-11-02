@@ -141,9 +141,16 @@ kit. The `scripts/force-fail-job.sh` script remains only as a last resort.
 Open **Users** from the top menu to see every account with its email, organisation, role, and active state. For any account other than your own you can:
 
 - **Make admin / Demote** — grant or remove admin rights.
-- **Activate / Deactivate** — enable or disable the account. Deactivated users can't use the app.
+- **Activate / Deactivate** — enable or disable the account. Deactivated users can't use the app: the block takes effect on their very next click, not at their next login.
+- **Delete** — remove the account permanently.
 
-You **cannot change your own account** here (no self-demotion or self-deactivation) — ask another admin if needed.
+**Deactivate or delete?** Deactivate is almost always the right one. It stops access immediately and keeps every record attached to a real person, so you can still say who submitted which analysis. Delete exists to tidy away an account that never did anything — an abandoned sign-up, or a test account.
+
+**Delete refuses rather than destroying work.** If the account has submitted an analysis, owns a project, claimed or registered a kit, uploaded reads, saved a control template, started a matching run or hand-edited a genotype, you get a message naming what is in the way — for example *"Cannot delete bob@lab.org: it has 3 analyses, 1 project. Deactivate the account instead."* Nothing is deleted in that case. The one thing deletion does take with it is the account's kit access, which is the point: a kit someone was given access to but never claimed is unaffected, it simply stops being theirs.
+
+If a client account is blocked only by a **claimed kit** and you genuinely want it gone, the claim has to be released first. There is no button for this yet — it is `DELETE /api/kits/{kit_id}/claim`, which detaches the claimer and leaves the printed claim code working, so the kit can be claimed again by the right person.
+
+You **cannot change or delete your own account** here, and the **last remaining admin** cannot be demoted, deactivated or deleted by anyone — otherwise nobody would be able to reach these screens again. Ask another admin if you need your own account changed.
 
 > **Kits are not handed out here** — clients claim them with the code in the box ([Section 3](#3-kits)), and the **Kits** page can grant access by hand if one goes to the wrong account.
 

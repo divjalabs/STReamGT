@@ -244,6 +244,7 @@ export const api = {
   // users (admin)
   listUsers: () => request("/users"),
   updateUser: (id, body) => request(`/users/${id}`, { method: "PATCH", body }),
+  deleteUser: (id) => request(`/users/${id}`, { method: "DELETE" }),
 
   // jobs
   createJob: (payload) => request("/jobs", { method: "POST", body: payload }),
