@@ -1,11 +1,14 @@
-"""Which secret signs what, and refusing to run on the one that is public.
+"""Which secret signs what, and making sure each one reaches the processes that need it.
 
-Two separate problems this guards:
+Three separate problems this guards:
   * `secret_key` used to sign kit claim codes as well as logins. Rotating it — the first thing
     you would do if it leaked — would have destroyed every unredeemed code on kits already posted
     to labs, because only the hash is stored.
   * its default is a placeholder committed to a public repository, and nothing stopped the app
     running on it.
+  * splitting the keys added a setting the app refuses to start without, and it was delivered to
+    the Lambda but not to ECS tasks. The API was fine; the weekly backup and every genotyping run
+    died at import for three days before the backup alarm said so.
 """
 from __future__ import annotations
 
@@ -123,4 +126,31 @@ def test_development_is_left_alone():
     """The placeholder is the whole point of the default: `git clone` and run."""
     _assert_usable_in_production(
         _settings(environment="development", secret_key="change-me-in-prod", claim_code_key=None)
+    )
+
+
+# --- the secret has to reach every process, not just the API ---------------------------
+# The claim-code key was created in Parameter Store and picked up by the Lambda, which reads the
+# whole path. ECS task definitions name their secrets one at a time, and nobody added it there,
+# so for three days the weekly backup and every genotyping run died at import on the guard above.
+
+def test_every_required_secret_is_delivered_to_ecs_tasks():
+    import re
+    from pathlib import Path
+
+    from app.config import REQUIRED_IN_PRODUCTION
+
+    main_tf = Path(__file__).resolve().parents[2] / "infra" / "main.tf"
+    if not main_tf.exists():
+        pytest.skip("infra/ is not part of this checkout")
+
+    m = re.search(r"secret_param_names\s*=\s*\[([^\]]*)\]", main_tf.read_text())
+    assert m, "could not find local.secret_param_names in infra/main.tf"
+    delivered = set(re.findall(r'"([^"]+)"', m.group(1)))
+
+    missing = [name for name in REQUIRED_IN_PRODUCTION if name not in delivered]
+    assert not missing, (
+        f"{missing} must start the app in production but no ECS task definition injects them. "
+        "Add them to local.secret_param_names in infra/main.tf and apply, or the next ECS task "
+        "to run will fail at import."
     )

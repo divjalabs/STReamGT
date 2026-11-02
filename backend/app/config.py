@@ -141,6 +141,14 @@ def _load_ssm_parameters() -> None:
         )
 
 
+# Every process in production must have these, or it refuses to start (below). Named here as env
+# vars rather than fields because that is how they are delivered — and because of how easy it is
+# to deliver them to only half the system: the Lambda loads the whole SSM path, while an ECS task
+# receives only the parameters its task definition lists one at a time. Anything added here must
+# also go into local.secret_param_names in infra/main.tf; tests/test_secrets.py checks that it did.
+REQUIRED_IN_PRODUCTION = ("SECRET_KEY", "CLAIM_CODE_KEY")
+
+
 def _assert_usable_in_production(settings: "Settings") -> None:
     """Refuse to start rather than run on a secret anybody can read.
 

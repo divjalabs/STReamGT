@@ -16,9 +16,16 @@ locals {
   # Secrets live in SSM Parameter Store (SecureString, free standard tier) under /<project>/,
   # created by hand (see README) so their values never enter Terraform state. The parameter name
   # is the env var name: /streamgt/SECRET_KEY -> SECRET_KEY.
-  ssm_path           = "/${var.project}"
-  ssm_arn_prefix     = "arn:aws:ssm:${var.region}:${var.account_id}:parameter${local.ssm_path}"
-  secret_param_names = ["SECRET_KEY", "DATABASE_URL", "SMTP_USER", "SMTP_PASSWORD"]
+  ssm_path       = "/${var.project}"
+  ssm_arn_prefix = "arn:aws:ssm:${var.region}:${var.account_id}:parameter${local.ssm_path}"
+  # This list is the ONLY way a parameter reaches an ECS task: a task definition injects secrets
+  # one by one by ARN, unlike the Lambda, which reads the whole /streamgt/ path at cold start
+  # (app.config._load_ssm_parameters). So a new parameter the app needs works in the API and then
+  # kills every task — which is exactly what CLAIM_CODE_KEY did for three days: the app refuses to
+  # start in production without it (app.config.REQUIRED_IN_PRODUCTION), so the weekly backup and
+  # every genotyping run died at import. backend/tests/test_secrets.py now fails if the two lists
+  # disagree.
+  secret_param_names = ["SECRET_KEY", "CLAIM_CODE_KEY", "DATABASE_URL", "SMTP_USER", "SMTP_PASSWORD"]
 
   # Env shared by the API (Lambda) and the head task. DATABASE_URL (Neon) comes from SSM.
   common_env = {
