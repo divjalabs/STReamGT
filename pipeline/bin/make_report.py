@@ -141,38 +141,6 @@ def funnel_section(reads_summary, expected):
     return html
 
 
-# ---------------- Section: controls ----------------
-
-def controls_section(genotypes):
-    """Summarise control wells: total reads per control type + a per-control table."""
-    if genotypes.empty:
-        return "<p class='muted'>No controls in this run.</p>"
-    ct = _control_type_of(genotypes)
-    ctrls = genotypes[ct.isin(CONTROL_TYPES)].copy()
-    if ctrls.empty:
-        return "<p class='muted'>No controls in this run.</p>"
-    ctrls["control_type"] = ct[ct.isin(CONTROL_TYPES)]
-
-    per_type = (ctrls.groupby("control_type")["Read_Count"].sum()
-                .reset_index().sort_values("control_type"))
-    fig = go.Figure(go.Bar(
-        x=per_type["control_type"], y=per_type["Read_Count"],
-        marker_color=[CONTROL_TYPE_COLORS.get(t, "#64748b") for t in per_type["control_type"]]))
-    fig.update_layout(title="Total reads per control type", yaxis_title="reads",
-                      xaxis_title="control type", margin=dict(t=50))
-
-    by_ctrl = (ctrls.groupby(["Sample_Name", "control_type"])["Read_Count"].sum()
-               .reset_index().sort_values(["control_type", "Sample_Name"]))
-    rows = "".join(
-        f"<tr><td>{r.Sample_Name}</td><td>{r.control_type}</td>"
-        f"<td style='text-align:right'>{int(r.Read_Count):,}</td></tr>"
-        for r in by_ctrl.itertuples())
-    table = ("<table style='border-collapse:collapse;margin-top:.5rem' border='1' cellpadding='4'>"
-             "<thead><tr><th>Control</th><th>Type</th><th>Reads</th></tr></thead>"
-             f"<tbody>{rows}</tbody></table>")
-    return _frag(fig) + table
-
-
 def _fmt_num(v):
     try:
         return f"{float(v):g}"
@@ -219,11 +187,15 @@ def per_locus_section(genotypes):
     fig.update_layout(title="Reads per locus", yaxis_title="reads", xaxis_title="locus", margin=dict(t=50))
     html = _frag(fig)
 
+    # Total called alleles first: grouped bars follow trace order, so this one sits on the left of
+    # each pair. Colours stay with their meaning (green = called, cyan = unique), not with position.
     fig2 = go.Figure()
-    fig2.add_bar(name="distinct sequences", x=per_marker["Marker"], y=per_marker["sequences"], marker_color="#0891b2")
-    fig2.add_bar(name="called alleles", x=per_marker["Marker"], y=per_marker["called_alleles"], marker_color="#059669")
-    fig2.update_layout(title="Sequences and called alleles per locus", barmode="group",
-                       xaxis_title="locus", margin=dict(t=50))
+    fig2.add_bar(name="total called alleles", x=per_marker["Marker"],
+                 y=per_marker["called_alleles"], marker_color="#059669")
+    fig2.add_bar(name="unique alleles", x=per_marker["Marker"],
+                 y=per_marker["sequences"], marker_color="#0891b2")
+    fig2.update_layout(title="Allelic diversity per locus", barmode="group",
+                       xaxis_title="locus", yaxis_title="alleles", margin=dict(t=50))
     html += _frag(fig2)
 
     per_plate = g.groupby("Plate").agg(reads=("Read_Count", "sum"),
@@ -251,52 +223,127 @@ def per_locus_section(genotypes):
 
 # ---------------- Section 3: plate read-count heatmaps with controls ----------------
 
-def _short(s, n=13):
-    """Truncate a long sample name for in-cell display; the full name stays available on hover."""
-    s = str(s)
-    return s if len(s) <= n else s[:n - 1] + "…"
+SAMPLE_COLOR = "#2563eb"          # same blue as "Reads per locus"
+BUBBLE_MIN, BUBBLE_MAX = 6, 30    # marker diameter in px
+
+
+def _bubble_size(reads, top):
+    """Diameter for a read count, scaled so AREA is proportional to reads.
+
+    Perceived quantity follows area, so the radius goes as sqrt(): a linear radius would make the
+    loudest well look about four times bigger than it is. Wells with no reads are drawn separately.
+    """
+    if not top or reads <= 0:
+        return BUBBLE_MIN
+    return BUBBLE_MIN + (BUBBLE_MAX - BUBBLE_MIN) * (float(reads) / float(top)) ** 0.5
+
+
+def _nice_round(v):
+    """The largest "round" number at or below v, stepping 1 / 2.5 / 5 per decade.
+
+    So a locus topping out at 13,516 reads gets a scale of 10,000 / 2,500 / 500 rather than
+    13,516 / 3,379 / 844 — a legend is for reading off, and nobody reads off 3,379.
+    """
+    if v <= 0:
+        return 0
+    import math
+    decade = 10 ** math.floor(math.log10(v))
+    for step in (10, 5, 2.5, 1):
+        cand = step * decade
+        if cand <= v:
+            return int(cand) if cand >= 1 else cand
+    return int(decade)
+
+
+def _scale_legend(top):
+    """Three reference circles explaining the sizes, as its own labelled trace.
+
+    Rebuilt per locus because the sizes are rescaled per locus — a circle means nothing without
+    the key beside it. The labels are rounded down to readable numbers, and the circle drawn is
+    the size that number earns, so what you see is what you can measure against.
+    """
+    if not top:
+        return None
+    vals = []
+    for raw in (top, top / 4, top / 16):
+        v = _nice_round(raw)
+        if v > 0 and v not in vals:          # a low-yield locus can collapse these into one
+            vals.append(v)
+    if not vals:
+        return None
+    return go.Scatter(
+        x=list(range(1, len(vals) + 1)), y=[1] * len(vals), mode="markers+text",
+        text=[f"{v:,}" for v in vals], textposition="bottom center",
+        textfont=dict(size=10), showlegend=False, hoverinfo="skip",
+        marker=dict(size=[_bubble_size(v, top) for v in vals], color=SAMPLE_COLOR,
+                    opacity=0.85, line=dict(width=0)))
 
 
 def _plate_figure(plates, layout_by, reads_by, ctrl_by):
-    """Interactive Plotly figure for one locus: every primer plate as an 8x12 heatmap of
-    read counts, with sample name + count printed in each cell and controls outlined by type
-    (colour = control type). Returns a plotly Figure (rendered lazily on the client)."""
+    """Interactive Plotly figure for one locus: every primer plate as an 8x12 grid of circles
+    whose AREA is the read count. Samples blue, controls in their type colour, wells that produced
+    nothing as a hollow grey ring. Names and counts are on hover only. Sizes are rescaled to this
+    locus's loudest well, with a scale strip underneath. Returns a Figure (rendered client-side)."""
     from collections import defaultdict
     ncol = 2 if len(plates) > 1 else 1
     nrow = (len(plates) + ncol - 1) // ncol
-    fig = make_subplots(rows=nrow, cols=ncol, subplot_titles=[f"PP{p}" for p in plates],
-                        horizontal_spacing=0.06, vertical_spacing=max(0.06, 0.16 / nrow))
+    top = max([v for v in reads_by.values() if v], default=0)
+
+    # The scale sits on top, spanning the full width, so it is read before the plates rather
+    # than found after them.
+    specs = ([[{"colspan": ncol}] + [None] * (ncol - 1)]
+             + [[{} for _ in range(ncol)] for _ in range(nrow)])
+    titles = ["scale"] + [f"PP{p}" for p in plates]
+    fig = make_subplots(rows=nrow + 1, cols=ncol, specs=specs, subplot_titles=titles,
+                        row_heights=[0.3] + [1] * nrow,
+                        horizontal_spacing=0.06, vertical_spacing=max(0.07, 0.18 / nrow))
     for idx, plate in enumerate(plates):
-        r, c = idx // ncol + 1, idx % ncol + 1
-        z = [[None] * 12 for _ in range(8)]
-        disp = [[""] * 12 for _ in range(8)]   # truncated name + count shown in the cell
-        full = [[""] * 12 for _ in range(8)]   # full name + count shown on hover
-        by_type = defaultdict(lambda: ([], []))   # control_type -> (xs, ys)
+        r, c = idx // ncol + 2, idx % ncol + 1
+        # One trace per control type plus one for samples, so each keeps its own colour; empty
+        # wells go in their own trace because a size cannot express "nothing".
+        groups = defaultdict(lambda: ([], [], [], []))   # key -> xs, ys, sizes, hover
         for pos in range(1, 97):
             name = layout_by.get((plate, pos))
             if name is None:
-                continue
+                continue                      # no such well in this run's layout
             rr, cc = _well_row_col(pos)
             reads = reads_by.get((plate, pos), 0)
-            z[ROWS.index(rr)][cc - 1] = reads
-            disp[ROWS.index(rr)][cc - 1] = f"{_short(name)}<br>{reads:,}"
-            full[ROWS.index(rr)][cc - 1] = f"{name}<br>{reads:,}"
             ctype = ctrl_by.get((plate, pos), "")
+            key = ctype if ctype in CONTROL_TYPES else ("sample" if reads else "empty")
+            label = f"{name}<br>{reads:,} reads" if reads else f"{name}<br>no reads"
             if ctype in CONTROL_TYPES:
-                by_type[ctype][0].append(cc); by_type[ctype][1].append(rr)
-        fig.add_trace(go.Heatmap(
-            z=z, x=list(range(1, 13)), y=ROWS, text=disp, texttemplate="%{text}",
-            hovertext=full, textfont=dict(size=8), colorscale="Blues", showscale=False,
-            xgap=1, ygap=1, hovertemplate="%{hovertext}<extra></extra>"), row=r, col=c)
-        for ctype, (cx, cy) in by_type.items():
+                label = f"{name}<br>{ctype} control<br>{reads:,} reads"
+            xs, ys, sz, hv = groups[key]
+            xs.append(cc); ys.append(rr); sz.append(_bubble_size(reads, top)); hv.append(label)
+        for key, (xs, ys, sz, hv) in groups.items():
+            if key == "empty":
+                marker = dict(size=BUBBLE_MIN, color="rgba(0,0,0,0)",
+                              line=dict(width=1, color="#cbd5e1"))
+            else:
+                marker = dict(size=sz, opacity=0.85, line=dict(width=0),
+                              color=SAMPLE_COLOR if key == "sample"
+                              else CONTROL_TYPE_COLORS.get(key, "#64748b"))
             fig.add_trace(go.Scatter(
-                x=cx, y=cy, mode="markers", showlegend=False, hoverinfo="skip",
-                marker=dict(symbol="square-open", size=34,
-                            color=CONTROL_TYPE_COLORS.get(ctype, "#dc2626"),
-                            line=dict(width=3))), row=r, col=c)
-    fig.update_xaxes(side="top", dtick=1, tickfont=dict(size=10), constrain="domain")
-    fig.update_yaxes(autorange="reversed", tickfont=dict(size=10))
-    fig.update_layout(height=340 * nrow + 40, margin=dict(t=40, l=20, r=10, b=10),
+                x=xs, y=ys, mode="markers", showlegend=False, hovertext=hv,
+                hovertemplate="%{hovertext}<extra></extra>", marker=marker), row=r, col=c)
+
+    legend = _scale_legend(top)
+    if legend is not None:
+        fig.add_trace(legend, row=1, col=1)
+        fig.update_xaxes(visible=False, range=[0.4, 4], row=1, col=1)
+        fig.update_yaxes(visible=False, range=[0.5, 1.6], row=1, col=1)
+
+    for idx in range(len(plates)):
+        r, c = idx // ncol + 2, idx % ncol + 1
+        fig.update_xaxes(side="top", dtick=1, tickfont=dict(size=10),
+                         range=[0.5, 12.5], row=r, col=c)
+        fig.update_yaxes(autorange="reversed", categoryorder="array", categoryarray=ROWS,
+                         tickfont=dict(size=10), row=r, col=c)
+    # Subplot titles are annotations sitting right on the subplot's top edge, which is also where
+    # the position axis lives — so PP5 and the column numbers landed on top of each other.
+    for ann in fig.layout.annotations:
+        ann.update(yshift=16)
+    fig.update_layout(height=340 * nrow + 150, margin=dict(t=50, l=20, r=10, b=10),
                       plot_bgcolor="#f9fafb", font=dict(size=11))
     return fig
 
@@ -358,11 +405,14 @@ def plate_heatmap_section(genotypes, positions, negative_name):
     log.info("plate heatmaps: %d loci", len(options))
 
     legend = " ".join(
-        f"<span style='color:{c}'>■</span> {t}" for t, c in CONTROL_TYPE_COLORS.items()
+        f"<span style='color:{c}'>●</span> {t}" for t, c in CONTROL_TYPE_COLORS.items()
         if t != "negative")
-    intro = ("<p class='muted'>Each primer plate (PP) as an 8×12 grid — cell = sample name and read "
-             "count, coloured by count. Control wells are outlined by type: " + legend +
-             ". Pick a locus; zoom/pan to read; hover for exact values.</p>")
+    intro = ("<p class='muted'>Each primer plate (PP) as an 8×12 grid. <b>Circle area is the read "
+             f"count</b> — the scale underneath gives the numbers. <span style='color:{SAMPLE_COLOR}'>●</span> "
+             "sample; controls in their own colour: " + legend +
+             "; a hollow ring is a well that produced no reads. Sizes are rescaled to the loudest "
+             "well of the locus you are viewing, so pick a locus and hover a circle for its name "
+             "and exact count.</p>")
     select = ("<label>Locus: <select onchange='showPlate(this.value)' style='font-size:1rem;padding:.3rem'>"
               + "".join(options) + "</select></label>")
     script = ("<script>var PLATE_FIGS=[" + ",".join(figs_json) + "];"
@@ -511,9 +561,8 @@ def main():
         f"<h1>{args.kit_id} — run report</h1>"
         f"<h2>Read attrition</h2>{funnel_section(reads_summary, args.expected_reads)}"
         f"<h2>Reads and alleles per locus / replicate assigned to alleles</h2>{per_locus_section(genotypes)}"
-        f"<h2>Controls</h2>{controls_section(genotypes)}"
         f"<h2>Thresholds used per locus</h2>{thresholds_section(thresholds)}"
-        f"<h2>Plate read counts (□ = control)</h2>{plate_heatmap_section(genotypes, positions, negative_name)}"
+        f"<h2>Plate read counts</h2>{plate_heatmap_section(genotypes, positions, negative_name)}"
     )
     out_main = f"{args.kit_id}_report.html"
     with open(out_main, "w") as f:
