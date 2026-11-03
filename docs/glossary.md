@@ -7,14 +7,14 @@ Plain definitions of the terms you'll meet in the app and in your results.
 
 ### Kit
 
-A physical library you receive in the post: a 96-well (8×12) plate preloaded for one species, together with the **tags** and **primers** needed to sequence it. You fill the wells with your samples, run them, and upload the reads. In the app a kit already knows its species, **primer panel** and **tag** layout, so there's nothing to configure. A kit moves through statuses — **sent → received → analysed** (and **reanalyse** if you run it again). One kit = one library = up to 96 wells.
+A physical library you receive in the post: eight 96-well plates (marked as PP1-PP8) preloaded for one species, together with the **tags** to mark the samples and **primers** needed to sequence it. You fill the wells with your samples, run them, and upload the reads. In the app a kit already knows its species, **primer panel** and **tag** layout, so there's nothing to configure. A kit moves through statuses — **sent → received → analysed** (and **reanalyse** if you run it again). One kit = one library = up to 96 wells replicated 8 times. 
 
 
 ### Primer panel
 
 The set of PCR primers a kit uses — one pair per **marker**. Panels are species-specific (e.g. `UA` for brown bear, `LL_MPA` for lynx) and decide which markers you get genotypes for. Sex and SNP markers also carry a reference sequence in the panel, so the caller knows what an X versus a Y, or each SNP allele, should look like.
 
-### Tags (PP columns)
+### Tags (PP1 - PP8)
 
 Short DNA barcodes attached to your fragments so a pooled sequencing run can be un-pooled afterwards. Each **PP column** is one physical primer plate carrying one set of tags. Because every well-and-plate combination gets a unique tag pair, the pipeline can take a pile of mixed reads and sort each one back to the exact well it came from. You choose which PP columns a batch uses when you submit.
 
